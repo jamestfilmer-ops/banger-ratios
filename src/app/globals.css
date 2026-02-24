@@ -6,12 +6,18 @@
   --black: #111111;
   --gray-text: #6B7280;
   --border: #E5E7EB;
-  --bg-soft: #F9FAFB;
+  --bg-soft: #F4F6F8;
 }
 
 * { box-sizing: border-box; }
 
-html { background: var(--bg-soft); }
+html {
+  background: linear-gradient(
+    to bottom,
+    var(--bg-soft) 0%,
+    #f0f2f5 100%
+  );
+}
 
 body {
   font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
@@ -219,6 +225,7 @@ input, textarea { font-family: inherit; }
   border-radius: 16px;
   border: 1px solid var(--border);
   padding: 2rem;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.04);
 }
 
 /* Scrolling news banner keyframe */

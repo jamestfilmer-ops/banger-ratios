@@ -1,12 +1,10 @@
 'use client'
- 
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
- 
-// Rating scale labels — shown as a legend above the tracks
+
 const SCALE = { 1:'Awful', 2:'Bad', 3:'Meh', 4:'OK', 5:'Good', 6:'Great', 7:'Perfect' }
- 
+
 function getBadge(ratio) {
   if (ratio >= 90) return '💎 Certified Classic'
   if (ratio >= 75) return '🥇 Solid Gold'
@@ -14,142 +12,169 @@ function getBadge(ratio) {
   if (ratio >= 40) return '⚠️ Filler Warning'
   return '❌ Skip It'
 }
- 
+
+const timeout = (promise, ms) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms))
+])
+
 export default function AlbumPage() {
   const { id: albumId } = useParams()
   const [album, setAlbum] = useState(null)
   const [tracks, setTracks] = useState([])
-  const [myRatings, setMyRatings] = useState({})   // { trackId: score }
-  const [skipped, setSkipped] = useState({})        // { trackId: true }
+  const [myRatings, setMyRatings] = useState({})
+  const [skipped, setSkipped] = useState({})
   const [user, setUser] = useState(null)
   const [loaded, setLoaded] = useState(false)
+  const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
- 
+
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data?.user || null))
     loadAlbum()
   }, [albumId])
- 
+
   async function loadAlbum() {
-    // 1. Fetch album + tracks from iTunes API
-    const res = await fetch(`https://itunes.apple.com/lookup?id=${albumId}&entity=song`)
-    const data = await res.json()
-    const results = data.results || []
-    const albumData = results.find(r => r.wrapperType === 'collection')
-    const trackData = results.filter(r => r.wrapperType === 'track')
-    if (!albumData) return
- 
-    // 2. Save album to Supabase (upsert = insert or update if already exists)
-    const { data: dbAlbum } = await supabase.from('albums').upsert({
-      itunes_collection_id: albumData.collectionId,
-      name:         albumData.collectionName,
-      artist_name:  albumData.artistName,
-      artwork_url:  albumData.artworkUrl100?.replace('100x100', '600x600'),
-      release_date: albumData.releaseDate?.split('T')[0],
-      genre:        albumData.primaryGenreName,
-      track_count:  trackData.length,
-    }, { onConflict: 'itunes_collection_id' }).select().single()
- 
-    setAlbum(dbAlbum)
- 
-    // 3. Save all tracks to Supabase (batch upsert)
-    const trackRows = trackData.map(t => ({
-      album_id:         dbAlbum.id,
-      itunes_track_id:  t.trackId,
-      name:             t.trackName,
-      track_number:     t.trackNumber,
-      duration_ms:      t.trackTimeMillis,
-      preview_url:      t.previewUrl,
-    }))
-    await supabase.from('tracks').upsert(trackRows, { onConflict: 'itunes_track_id' })
- 
-    // 4. Load tracks from DB (includes community avg_rating and is_banger)
-    const { data: dbTracks } = await supabase
-      .from('tracks').select('*')
-      .eq('album_id', dbAlbum.id)
-      .order('track_number', { ascending: true })
-    setTracks(dbTracks || [])
- 
-    // 5. Load this user's existing ratings for this album
-    const { data: { user: u } } = await supabase.auth.getUser()
-    if (u) {
-      const { data: existing } = await supabase
-        .from('ratings').select('track_id, score')
-        .eq('user_id', u.id).eq('album_id', dbAlbum.id)
-      const map = {}
-      ;(existing || []).forEach(r => map[r.track_id] = r.score)
-      setMyRatings(map)
+    try {
+      setError(null)
+      console.log('Loading album:', albumId)
+
+      const res = await timeout(
+        fetch(`https://itunes.apple.com/lookup?id=${albumId}&entity=song`),
+        8000
+      )
+      if (!res.ok) throw new Error(`iTunes API error: ${res.status}`)
+      const data = await res.json()
+      const results = data.results || []
+      const albumData = results.find(r => r.wrapperType === 'collection')
+      const trackData = results.filter(r => r.wrapperType === 'track')
+
+      if (!albumData) throw new Error('No album found in iTunes response')
+
+      const { data: dbAlbum, error: upsertErr } = await supabase.from('albums').upsert({
+        itunes_collection_id: albumData.collectionId,
+        name: albumData.collectionName,
+        artist_name: albumData.artistName,
+        artwork_url: albumData.artworkUrl100?.replace('100x100', '600x600'),
+        release_date: albumData.releaseDate?.split('T')[0],
+        genre: albumData.primaryGenreName,
+        track_count: trackData.length,
+      }, { onConflict: 'itunes_collection_id' }).select().single()
+
+      if (upsertErr) throw upsertErr
+      setAlbum(dbAlbum)
+
+      const trackRows = trackData.map(t => ({
+        album_id: dbAlbum.id,
+        itunes_track_id: t.trackId,
+        name: t.trackName,
+        track_number: t.trackNumber,
+        duration_ms: t.trackTimeMillis,
+        preview_url: t.previewUrl,
+      }))
+
+      await supabase.from('tracks').upsert(trackRows, { onConflict: 'itunes_track_id' })
+
+      const { data: dbTracks } = await supabase
+        .from('tracks')
+        .select('*')
+        .eq('album_id', dbAlbum.id)
+        .order('track_number', { ascending: true })
+
+      setTracks(dbTracks || [])
+
+      const { data: { user: u } } = await supabase.auth.getUser()
+      setUser(u || null)
+
+      if (u) {
+        const { data: existing } = await supabase
+          .from('ratings')
+          .select('track_id, score')
+          .eq('user_id', u.id)
+          .eq('album_id', dbAlbum.id)
+
+        const map = {}
+        ;(existing || []).forEach(r => map[r.track_id] = r.score)
+        setMyRatings(map)
+      }
+
+      setLoaded(true)
+    } catch (err) {
+      console.error('Album load error:', err)
+      setError(err.message || 'Failed to load album')
+      setLoaded(true)
     }
- 
-    setLoaded(true)
   }
- 
+
+  // ... (the rest of your functions: rate, skip, submitAll, msToTime stay exactly the same)
+
   function rate(trackId, score) {
     if (!user) return
     setMyRatings(prev => ({ ...prev, [trackId]: score }))
     setSkipped(prev => { const n = {...prev}; delete n[trackId]; return n })
     setDirty(true); setSaved(false)
   }
- 
+
   function skip(trackId) {
     setSkipped(prev => ({ ...prev, [trackId]: true }))
     setMyRatings(prev => { const n = {...prev}; delete n[trackId]; return n })
     setDirty(true); setSaved(false)
   }
- 
+
   async function submitAll() {
     if (!user || !album) return
     setSaving(true)
     const entries = Object.entries(myRatings)
     if (entries.length === 0) { setSaving(false); return }
- 
-    // Batch insert all ratings at once
     const rows = entries.map(([trackId, score]) => ({
-      user_id:  user.id,
+      user_id: user.id,
       track_id: parseInt(trackId),
       album_id: album.id,
       score,
     }))
     await supabase.from('ratings').upsert(rows, { onConflict: 'user_id,track_id' })
- 
-    // Recalculate the Banger Ratio via the Supabase function
     await supabase.rpc('recalculate_banger_ratio', { p_album_id: album.id })
- 
-    // Reload updated data
     const { data: dbTracks } = await supabase
       .from('tracks').select('*').eq('album_id', album.id).order('track_number', { ascending: true })
     setTracks(dbTracks || [])
- 
     const { data: refreshed } = await supabase
       .from('albums').select('*').eq('id', album.id).single()
     setAlbum(refreshed)
- 
     setSaving(false); setSaved(true); setDirty(false)
   }
- 
+
   function msToTime(ms) {
     if (!ms) return ''
     return `${Math.floor(ms/60000)}:${Math.floor((ms%60000)/1000).toString().padStart(2,'0')}`
   }
- 
+
   if (!loaded) return (
     <div style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <p style={{ color: 'var(--gray-400)' }}>Loading album...</p>
     </div>
   )
- 
+
+  if (error) return (
+    <div style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+      <div>
+        <p style={{ color: 'red', fontSize: 18, marginBottom: 12 }}>Error loading album</p>
+        <p style={{ color: 'var(--gray-400)' }}>{error}</p>
+        <p style={{ marginTop: 20 }}><a href="/" style={{ color: 'var(--pink)' }}>Back to home</a></p>
+      </div>
+    </div>
+  )
+
+  // Your original return JSX below (copy-paste the rest from your file if you deleted it)
   const ratedTracks = tracks.filter(t => t.total_ratings > 0)
-  const bangers     = tracks.filter(t => t.is_banger).length
-  const myCount     = Object.keys(myRatings).length
-  const skipCount   = Object.keys(skipped).length
-  const progress    = tracks.length ? ((myCount + skipCount) / tracks.length * 100).toFixed(0) : 0
- 
+  const bangers = tracks.filter(t => t.is_banger).length
+  const myCount = Object.keys(myRatings).length
+  const skipCount = Object.keys(skipped).length
+  const progress = tracks.length ? ((myCount + skipCount) / tracks.length * 100).toFixed(0) : 0
+
   return (
     <div style={{ minHeight: '100vh', background: '#FAFAFA' }}>
       <main style={{ maxWidth: 720, margin: '0 auto', padding: '28px 20px 120px' }}>
- 
         {/* Album header */}
         {album && (
           <div style={{ display: 'flex', gap: 24, marginBottom: 32, flexWrap: 'wrap' }}>
@@ -163,7 +188,6 @@ export default function AlbumPage() {
               </p>
               <h1 style={{ fontSize: 26, fontWeight: 700, margin: '0 0 4px' }}>{album.name}</h1>
               <p style={{ color: 'var(--gray-600)', fontSize: 15, marginBottom: 16 }}>{album.artist_name}</p>
- 
               <div style={{ background: 'white', borderRadius: 14, padding: 20, border: '1px solid var(--gray-200)' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                   <span style={{ fontSize: 40, fontWeight: 700, color: 'var(--pink)' }}>
@@ -184,7 +208,7 @@ export default function AlbumPage() {
             </div>
           </div>
         )}
- 
+
         {/* Sign in prompt */}
         {!user && (
           <div style={{
@@ -197,8 +221,8 @@ export default function AlbumPage() {
             </p>
           </div>
         )}
- 
-        {/* Progress bar (only shown when logged in) */}
+
+        {/* Progress bar */}
         {user && (
           <div style={{ marginBottom: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -215,7 +239,7 @@ export default function AlbumPage() {
             </div>
           </div>
         )}
- 
+
         {/* Scale legend */}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginBottom: 12, flexWrap: 'wrap' }}>
           {Object.entries(SCALE).map(([n, label]) => (
@@ -224,12 +248,11 @@ export default function AlbumPage() {
             </span>
           ))}
         </div>
- 
+
         {/* Track list */}
         {tracks.map(track => {
-          const myScore  = myRatings[track.id]
+          const myScore = myRatings[track.id]
           const isSkipped = skipped[track.id]
- 
           return (
             <div key={track.id} style={{
               display: 'flex', alignItems: 'center', gap: 10,
@@ -251,7 +274,6 @@ export default function AlbumPage() {
                   {track.total_ratings > 0 && ` · Avg: ${track.avg_rating}/7 · ${track.total_ratings} ratings`}
                 </p>
               </div>
- 
               {user && !isSkipped && (
                 <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
                   {[1,2,3,4,5,6,7].map(n => (
@@ -259,13 +281,12 @@ export default function AlbumPage() {
                       width: 30, height: 30, borderRadius: 7, border: 'none', cursor: 'pointer',
                       fontSize: 12, fontWeight: 700,
                       background: myScore === n ? 'var(--pink)' : myScore && myScore > n ? 'rgba(255,0,102,0.12)' : 'var(--gray-100)',
-                      color:      myScore === n ? 'white' : myScore && myScore > n ? 'var(--pink)' : 'var(--gray-400)',
+                      color: myScore === n ? 'white' : myScore && myScore > n ? 'var(--pink)' : 'var(--gray-400)',
                       transition: 'all 0.1s',
                     }}>{n}</button>
                   ))}
                 </div>
               )}
- 
               {user && (
                 <button onClick={() => isSkipped ? rate(track.id, 5) : skip(track.id)} style={{
                   padding: '6px 10px', borderRadius: 7, border: '1px solid var(--gray-200)',
@@ -279,7 +300,7 @@ export default function AlbumPage() {
             </div>
           )
         })}
- 
+
         {/* Sticky submit bar */}
         {user && (
           <div style={{
@@ -303,7 +324,6 @@ export default function AlbumPage() {
             </button>
           </div>
         )}
- 
       </main>
     </div>
   )
