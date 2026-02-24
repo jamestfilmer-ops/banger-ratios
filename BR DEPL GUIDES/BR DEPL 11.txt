@@ -1,0 +1,1266 @@
+
+
+■ BANGER RATIOS
+DEFINITIVE DEPLOYMENT GUIDE
+BR DEP XIII  ·  February 2026  ·  The Full-Feature Edition
+
+github.com/jamestfilmer-ops  ·  bangerratios.com
+
+
+WHAT'S NEW IN DEP XIII
+•  Section 1 — Why Cmd+F fails + how to find your code another way
+•  Section 2 — Section 5B/5C terminal-first rewrite (no VS Code searching needed)
+•  Section 3 — Slow down news banner (animation duration fix)
+•  Section 4 — Profile photo upload for users
+•  Section 5 — Artists page: show more artists, display real photos
+•  Section 6 — Friends page: add magnifying glass search button
+•  Section 7 — User Settings page (password, username, bio, fav albums, streaming links)
+•  Section 8 — Community Rated: truncate long artist names
+•  Section 9 — Leaderboard: genre tabs for top 3
+•  Section 10 — Nav: fix excess spacing between tabs
+•  Section 11 — Bot/DDoS protection (Vercel + Supabase rate limiting)
+•  Section 12 — Terms & Conditions page + footer copyright 2026
+•  Section 13 — heredoc> problem: what it means and how to escape it
+•  Section 14 — Final push & cheat sheet with cache checkpoints
+
+⚠  READ FIRST: Run SQL from DEP XII Section 1 if you have not already. That single block fixes the signup crash and sets up all tables. All sections here assume it has been run.
+
+
+SECTION 1  —  WHY CMD+F IS NOT FINDING YOUR CODE — AND HOW TO FIX IT
+
+If Cmd+F (or Ctrl+F) is not finding lines like const [seeds, setSeeds] in your .js files, there are three likely reasons:
+
+Reason 1 — You are searching the wrong file
+Make sure you have the correct file open in VS Code. Albums code lives in src/app/albums/page.js. Artists code lives in src/app/artists/page.js. The file tab at the top of VS Code shows the filename — confirm it matches.
+
+Reason 2 — Your code uses different variable names
+The guide assumes variable names like seeds and SEED_ALBUMS, but your file may use different names written during earlier sessions. Run this in terminal to see the actual variable names in your file:
+# See all useState lines in albums/page.js
+grep -n "useState" ~/Desktop/banger-ratios/src/app/albums/page.js
+ 
+# See all useState lines in artists/page.js
+grep -n "useState" ~/Desktop/banger-ratios/src/app/artists/page.js
+ 
+# See the function/component names
+grep -n "function\|export default" ~/Desktop/banger-ratios/src/app/albums/page.js
+grep -n "function\|export default" ~/Desktop/banger-ratios/src/app/artists/page.js
+The output shows every useState line with its line number. Use THOSE variable names when searching in VS Code.
+
+Reason 3 — The component structure is different
+Run this to print the first 60 lines of each file so you can see the actual structure:
+head -60 ~/Desktop/banger-ratios/src/app/albums/page.js
+head -60 ~/Desktop/banger-ratios/src/app/artists/page.js
+
+✓  Once you know the real variable names and structure, Sections 2 covers adding the artwork code via terminal — no Cmd+F needed at all.
+
+
+SECTION 2  —  SECTION 5B & 5C — TERMINAL-FIRST ARTWORK FIX (NO CMD+F NEEDED)
+
+This replaces the VS Code approach entirely. Run the grep commands from Section 1 first to confirm your file structure, then use the approach below.
+
+Step 1 — Check what your album card file actually looks like
+# Print the whole albums page to read it
+cat ~/Desktop/banger-ratios/src/app/albums/page.js
+Read the output. You are looking for:
+•	The name of the main component function (e.g. AlbumsContent, Albums, AlbumsPage)
+•	The array of albums (e.g. SEED_ALBUMS, albums, albumList)
+•	An itunes_id or similar field on each album object
+•	The JSX where an emoji or placeholder image currently renders
+
+Step 2 — Add the artwork state using a Node.js patch script
+Instead of pasting into VS Code, this script reads your file, finds the right spot, and injects the code automatically. Run this in terminal:
+cd ~/Desktop/banger-ratios
+ 
+node -e "
+const fs = require('fs')
+const path = 'src/app/albums/page.js'
+let code = fs.readFileSync(path, 'utf8')
+ 
+// Check if artwork fetch already exists
+if (code.includes('seedArtwork')) {
+  console.log('Artwork fetch already present — skipping')
+  process.exit(0)
+}
+ 
+// The new state + useEffect to inject
+const inject = `
+  const [seedArtwork, setSeedArtwork] = React.useState({})
+  React.useEffect(() => {
+    async function fetchArtwork() {
+      const albums = typeof SEED_ALBUMS !== 'undefined' ? SEED_ALBUMS : []
+      const results = await Promise.all(
+        albums.map(async (album) => {
+          try {
+            const id = album.itunes_id || album.itunesId || album.id
+            if (!id) return [null, null]
+            const r = await fetch('https://itunes.apple.com/lookup?id=' + id + '&entity=album')
+            const d = await r.json()
+            const url = d.results?.[0]?.artworkUrl100?.replace('100x100','400x400')
+            return [id, url]
+          } catch { return [null, null] }
+        })
+      )
+      setSeedArtwork(Object.fromEntries(results.filter(([k,v]) => k && v)))
+    }
+    fetchArtwork()
+  }, [])
+`
+ 
+// Find the first useState line inside the component and inject after it
+const useStateMatch = code.match(/const \[\w+, set\w+\] = (?:React\.)?useState\([^)]*\)/)
+if (!useStateMatch) {
+  console.log('Could not find useState — check your file manually')
+  process.exit(1)
+}
+const insertAfter = useStateMatch[0]
+code = code.replace(insertAfter, insertAfter + ' ' + inject)
+fs.writeFileSync(path, code)
+console.log('Done — seedArtwork state injected')
+"
+
+⚠  If the script prints "Could not find useState — check your file manually", run: grep -n "useState" src/app/albums/page.js and share the output. The variable name will be visible and we can adjust.
+
+Step 3 — Replace the emoji placeholder with the artwork image
+First find what the emoji placeholder looks like in your file:
+grep -n 'emoji\|🎵\|fontSize.*3rem\|placeholder\|fallback' ~/Desktop/banger-ratios/src/app/albums/page.js | head -20
+This shows you the line number of the placeholder. Then open that file in VS Code, go to that line number (Ctrl+G or Cmd+G → type the line number → Enter), and replace the placeholder div with:
+{seedArtwork[album.itunes_id || album.itunesId || album.id]
+  ? <img
+      src={seedArtwork[album.itunes_id || album.itunesId || album.id]}
+      alt={album.title}
+      style={{ width:"100%", aspectRatio:"1", objectFit:"cover",
+               borderRadius:10, marginBottom:"1rem" }}
+    />
+  : <div style={{ width:"100%", aspectRatio:"1", background:"#1a1a1a",
+        borderRadius:10, display:"flex", alignItems:"center",
+        justifyContent:"center", marginBottom:"1rem", fontSize:"3rem" }}>
+      🎵
+    </div>
+}
+→  Cmd+G (Mac) or Ctrl+G (Windows) in VS Code jumps directly to a line number — much more reliable than Cmd+F when you already have the line number from grep.
+
+Same approach for artists/page.js
+# See the structure
+cat ~/Desktop/banger-ratios/src/app/artists/page.js
+ 
+# Find the placeholder
+grep -n 'emoji\|gradient\|linear-gradient\|fontSize.*1.4rem\|artist.name.charAt' ~/Desktop/banger-ratios/src/app/artists/page.js | head -20
+Then add the artist image state via the same node patch approach:
+cd ~/Desktop/banger-ratios
+ 
+node -e "
+const fs = require('fs')
+const path = 'src/app/artists/page.js'
+let code = fs.readFileSync(path, 'utf8')
+if (code.includes('artistImages')) { console.log('Already present'); process.exit(0) }
+const inject = `
+  const [artistImages, setArtistImages] = React.useState({})
+  React.useEffect(() => {
+    async function fetchImages() {
+      const list = typeof FEATURED_ARTISTS !== 'undefined' ? FEATURED_ARTISTS : []
+      const results = await Promise.all(
+        list.map(async (artist) => {
+          try {
+            const id = artist.id || artist.itunes_id
+            const r = await fetch('https://itunes.apple.com/lookup?id=' + id + '&entity=album&limit=1')
+            const d = await r.json()
+            const img = d.results?.[0]?.artworkUrl100?.replace('100x100','300x300')
+            return [id, img]
+          } catch { return [null, null] }
+        })
+      )
+      setArtistImages(Object.fromEntries(results.filter(([k,v]) => k && v)))
+    }
+    fetchImages()
+  }, [])
+`
+const m = code.match(/const \[\w+, set\w+\] = (?:React\.)?useState\([^)]*\)/)
+if (!m) { console.log('No useState found'); process.exit(1) }
+code = code.replace(m[0], m[0] + ' ' + inject)
+fs.writeFileSync(path, code)
+console.log('Done')
+"
+
+🔄  CACHE & PUSH CHECKPOINT
+npm run build   (fix any errors first)
+git add .
+git commit -m "describe change"
+git push
+→  Wait 60 seconds → check www.bangerratios.com
+
+
+SECTION 3  —  SLOW DOWN THE NEWS BANNER
+
+The banner scrolls too fast because the animation duration is set to 40s. Increase it to 90s or more for a comfortable reading speed.
+
+cd ~/Desktop/banger-ratios
+ 
+# This replaces the animation duration in NewsBanner.js
+node -e "
+const fs = require('fs')
+const path = 'src/app/components/NewsBanner.js'
+let code = fs.readFileSync(path, 'utf8')
+code = code.replace(/animation:['\"]scroll [0-9]+s/g, \"animation:'scroll 90s\")
+code = code.replace(/animation: 'scroll [0-9]+s/g, \"animation: 'scroll 90s\")
+fs.writeFileSync(path, code)
+console.log('Banner speed updated to 90s')
+"
+
+If the node command does not work, open src/app/components/NewsBanner.js in VS Code. Use Cmd+F to search for:
+scroll 40s
+Replace both instances of 40s with 90s. Save the file.
+→  90s is a comfortable reading pace. Use 120s for slower, 60s for slightly faster.
+
+🔄  CACHE & PUSH CHECKPOINT
+npm run build   (fix any errors first)
+git add .
+git commit -m "describe change"
+git push
+→  Wait 60 seconds → check www.bangerratios.com
+
+
+SECTION 4  —  PROFILE PHOTO UPLOAD FOR USERS
+
+This adds an avatar upload button to the profile page. Requires Section 1 SQL from DEP XII (storage buckets) to have been run.
+
+Step 1 — Verify storage bucket exists
+Go to Supabase → Storage. You should see an "avatars" bucket. If not, run the Block 4 SQL from DEP XII Section 1 again.
+
+Step 2 — Add avatar upload to profile/page.js via patch script
+cd ~/Desktop/banger-ratios
+ 
+node -e "
+const fs = require('fs')
+const path = 'src/app/profile/page.js'
+let code = fs.readFileSync(path, 'utf8')
+if (code.includes('uploadAvatar')) { console.log('Already present'); process.exit(0) }
+ 
+// Add uploadAvatar function — find the return statement and insert before it
+const avatarFn = `
+  async function uploadAvatar(file) {
+    if (!user) return
+    const ext = file.name.split('.').pop()
+    const filePath = user.id + '/avatar.' + ext
+    const { error } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file, { upsert: true })
+    if (error) { console.error(error); return }
+    const { data: { publicUrl } } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(filePath)
+    await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
+    setProfile(prev => ({ ...prev, avatar_url: publicUrl }))
+  }
+`
+ 
+const returnIdx = code.indexOf('   return (')
+if (returnIdx === -1) {
+  console.log('Could not find return statement')
+  process.exit(1)
+}
+code = code.slice(0, returnIdx) + ' ' + avatarFn + code.slice(returnIdx)
+fs.writeFileSync(path, code)
+console.log('uploadAvatar function added')
+"
+
+Step 3 — Add avatar display + upload button in the JSX
+Find your existing avatar display in profile/page.js. Use Cmd+G to jump to the line number found by:
+grep -n 'avatar\|profile.*img\|profileImg\|user.*photo' ~/Desktop/banger-ratios/src/app/profile/page.js | head -20
+Replace the existing avatar element (or add after the username display) with this self-contained avatar section:
+{/* Avatar with upload */}
+<div style={{ position:"relative", display:"inline-block", marginBottom:"1rem" }}>
+  {profile?.avatar_url
+    ? <img src={profile.avatar_url} alt="Profile"
+        style={{ width:96, height:96, borderRadius:"50%", objectFit:"cover",
+                 border:"3px solid var(--pink)" }} />
+    : <div style={{ width:96, height:96, borderRadius:"50%",
+        background:"linear-gradient(135deg,var(--pink) 0%,#7B2FF7 100%)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        fontSize:"2rem", fontWeight:700, color:"#fff",
+        border:"3px solid var(--pink)" }}>
+        {profile?.username?.charAt(0)?.toUpperCase() || "?"}
+      </div>
+  }
+  <label style={{ position:"absolute", bottom:0, right:0,
+    background:"var(--pink)", borderRadius:"50%", width:28, height:28,
+    display:"flex", alignItems:"center", justifyContent:"center",
+    cursor:"pointer", fontSize:"0.9rem" }}>
+    📷
+    <input type="file" accept="image/*" style={{ display:"none" }}
+      onChange={e => e.target.files[0] && uploadAvatar(e.target.files[0])} />
+  </label>
+</div>
+
+🔄  CACHE & PUSH CHECKPOINT
+npm run build   (fix any errors first)
+git add .
+git commit -m "describe change"
+git push
+→  Wait 60 seconds → check www.bangerratios.com
+
+
+SECTION 5  —  ARTISTS PAGE — SHOW MORE ARTISTS & REAL PHOTOS
+
+Part A — Why only 2 artists show per genre
+The artists page likely has a hardcoded FEATURED_ARTISTS array with only a handful of entries. Check how many are in there:
+grep -c "itunes_id\|itunesId\|{ name\|{ id:" ~/Desktop/banger-ratios/src/app/artists/page.js
+ 
+# Also print the array to see who is in it
+grep -A 3 "{ name" ~/Desktop/banger-ratios/src/app/artists/page.js | head -60
+To add more artists, find the FEATURED_ARTISTS array in the file and add entries. Each entry needs: name, id (iTunes artist ID), and genre. You can look up iTunes artist IDs at:
+→  itunes.apple.com/search?term=Artist+Name&entity=musicArtist — the "artistId" field in the JSON response is the ID to use.
+
+Add artists by editing the array directly in VS Code, or run a patch:
+cd ~/Desktop/banger-ratios
+ 
+# Print the FEATURED_ARTISTS array so you can see and extend it
+node -e "
+const fs = require('fs')
+const code = fs.readFileSync('src/app/artists/page.js', 'utf8')
+const start = code.indexOf('FEATURED_ARTISTS')
+console.log(code.slice(start, start + 800))
+"
+Once you see the array format, add more entries in VS Code following the same pattern. Here are some example iTunes artist IDs for popular artists:
+Artist	iTunes ID	Genre
+Kendrick Lamar	368183298	Hip-Hop
+Frank Ocean	442122078	R&B
+Tyler the Creator	420368335	Hip-Hop
+Radiohead	657515	Indie Rock
+Bon Iver	262491670	Indie Folk
+Vampire Weekend	278673033	Indie Rock
+The National	55465168	Indie Rock
+LCD Soundsystem	4827276	Electronic
+Chappell Roan	1702398397	Pop
+Phoebe Bridgers	1000816530	Indie Folk
+Kanye West	2715720	Hip-Hop
+SZA	471580480	R&B
+Sufjan Stevens	4236297	Indie Folk
+Beach House	261954680	Dream Pop
+Japanese Breakfast	1099518217	Indie Rock
+
+Part B — Display real artist photos
+The patch script from Section 2 adds the artistImages state. Once that is done, find the artist avatar in the JSX and replace it. Use Cmd+G to jump to the line number found by:
+grep -n 'linear-gradient\|artist.name.charAt\|ArtistAvatar\|artist.*photo' ~/Desktop/banger-ratios/src/app/artists/page.js | head -10
+Replace the gradient div with:
+{artistImages[artist.id || artist.itunes_id]
+  ? <img
+      src={artistImages[artist.id || artist.itunes_id]}
+      alt={artist.name}
+      style={{ width:80, height:80, borderRadius:"50%", objectFit:"cover",
+               marginBottom:"1rem", border:"2px solid var(--pink)" }}
+    />
+  : <div style={{ width:80, height:80, borderRadius:"50%",
+        background:"linear-gradient(135deg,var(--pink) 0%,#7B2FF7 100%)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        fontSize:"1.8rem", fontWeight:700, color:"#fff", marginBottom:"1rem" }}>
+      {artist.name.charAt(0)}
+    </div>
+}
+
+🔄  CACHE & PUSH CHECKPOINT
+npm run build   (fix any errors first)
+git add .
+git commit -m "describe change"
+git push
+→  Wait 60 seconds → check www.bangerratios.com
+
+
+SECTION 6  —  FRIENDS PAGE — ADD MAGNIFYING GLASS SEARCH BUTTON
+
+Replace friends/page.js with the corrected version that includes a proper search button with icon:
+cd ~/Desktop/banger-ratios
+cat << 'HEREDOC' > src/app/friends/page.js
+// File: src/app/friends/page.js
+'use client'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+ 
+export default function Friends() {
+  const router = useRouter()
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [following, setFollowing] = useState(new Set())
+  const [currentUser, setCurrentUser] = useState(null)
+  const [feed, setFeed] = useState([])
+  const [loading, setLoading] = useState(false)
+ 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data?.user) { router.push('/auth'); return }
+      setCurrentUser(data.user)
+      loadFollowing(data.user.id)
+      loadFeed(data.user.id)
+    })
+  }, [])
+ 
+  async function loadFollowing(uid) {
+    const { data } = await supabase.from('follows').select('following_id').eq('follower_id', uid)
+    if (data) setFollowing(new Set(data.map(r => r.following_id)))
+  }
+ 
+  async function loadFeed(uid) {
+    const { data: fol } = await supabase.from('follows').select('following_id').eq('follower_id', uid)
+    if (!fol?.length) return
+    const ids = fol.map(r => r.following_id)
+    const { data } = await supabase.from('ratings')
+      .select('*, profiles(username)')
+      .in('user_id', ids)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    if (data) setFeed(data)
+  }
+ 
+  async function search() {
+    if (!query.trim()) return
+    setLoading(true)
+    const { data } = await supabase.from('profiles')
+      .select('id, username, avatar_url')
+      .ilike('username', `%${query}%`)
+      .limit(10)
+    setResults(data || [])
+    setLoading(false)
+  }
+ 
+  async function toggleFollow(targetId) {
+    if (!currentUser) return
+    if (following.has(targetId)) {
+      await supabase.from('follows').delete()
+        .eq('follower_id', currentUser.id).eq('following_id', targetId)
+      setFollowing(prev => { const s = new Set(prev); s.delete(targetId); return s })
+    } else {
+      await supabase.from('follows').insert({ follower_id: currentUser.id, following_id: targetId })
+      setFollowing(prev => new Set([...prev, targetId]))
+    }
+  }
+ 
+  return (
+    <div style={{ maxWidth:800, margin:'2rem auto', padding:'0 1rem' }}>
+      <h1 style={{ color:'var(--pink)' }}>Find Friends</h1>
+ 
+      {/* Search bar with icon button */}
+      <div style={{ display:'flex', gap:'0.5rem', marginBottom:'2rem' }}>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && search()}
+          placeholder="Search by username..."
+          style={{
+            flex:1, padding:'0.6rem 1rem',
+            background:'#1a1a1a', border:'1px solid #333',
+            color:'#fff', borderRadius:'4px 0 0 4px', fontSize:'0.95rem'
+          }}
+        />
+        <button
+          onClick={search}
+          disabled={loading}
+          style={{
+            background:'var(--pink)', color:'#fff', border:'none',
+            padding:'0.6rem 1.2rem', cursor:'pointer',
+            borderRadius:'0 4px 4px 0', fontSize:'1.1rem',
+            display:'flex', alignItems:'center', gap:'0.3rem'
+          }}
+        >
+          {loading ? '…' : '🔍'}
+        </button>
+      </div>
+ 
+      {/* Search results */}
+      {results.length === 0 && query && !loading && (
+        <p style={{ color:'#888' }}>No users found for "{query}"</p>
+      )}
+      {results.map(u => (
+        <div key={u.id} style={{
+          display:'flex', justifyContent:'space-between', alignItems:'center',
+          padding:'0.75rem', border:'1px solid #222', marginBottom:'0.5rem',
+          borderRadius:4, background:'#0d0d0d'
+        }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+            {u.avatar_url
+              ? <img src={u.avatar_url} style={{ width:36, height:36, borderRadius:'50%', objectFit:'cover' }} />
+              : <div style={{ width:36, height:36, borderRadius:'50%',
+                  background:'var(--pink)', display:'flex', alignItems:'center',
+                  justifyContent:'center', fontWeight:700, color:'#fff' }}>
+                  {u.username?.charAt(0)?.toUpperCase()}
+                </div>
+            }
+            <Link href={'/profile/' + u.username} style={{ color:'#fff', textDecoration:'none', fontWeight:500 }}>
+              {u.username}
+            </Link>
+          </div>
+          {currentUser?.id !== u.id && (
+            <button onClick={() => toggleFollow(u.id)} style={{
+              background: following.has(u.id) ? '#333' : 'var(--pink)',
+              color:'#fff', border:'none', padding:'0.3rem 0.9rem',
+              cursor:'pointer', borderRadius:3, fontSize:'0.85rem'
+            }}>
+              {following.has(u.id) ? 'Unfollow' : 'Follow'}
+            </button>
+          )}
+        </div>
+      ))}
+ 
+      {/* Friend activity feed */}
+      {feed.length > 0 && (
+        <div style={{ marginTop:'2rem' }}>
+          <h2>Friend Activity</h2>
+          {feed.map(r => (
+            <div key={r.id} style={{ padding:'0.75rem', border:'1px solid #222',
+              marginBottom:'0.5rem', borderRadius:4 }}>
+              <span style={{ color:'var(--pink)' }}>{r.profiles?.username}</span>
+              {' rated a track '}
+              <strong>{r.score}/7</strong>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+HEREDOC
+
+🔄  CACHE & PUSH CHECKPOINT
+npm run build   (fix any errors first)
+git add .
+git commit -m "describe change"
+git push
+→  Wait 60 seconds → check www.bangerratios.com
+
+
+SECTION 7  —  USER SETTINGS PAGE — PASSWORD, USERNAME, BIO, FAV ALBUMS, STREAMING
+
+Step 1 — Add new profile columns to Supabase
+Run this SQL in Supabase → SQL Editor:
+-- Add settings columns to profiles table
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='bio')
+    THEN ALTER TABLE profiles ADD COLUMN bio text; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='favorite_albums')
+    THEN ALTER TABLE profiles ADD COLUMN favorite_albums jsonb DEFAULT '[]'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='spotify_url')
+    THEN ALTER TABLE profiles ADD COLUMN spotify_url text; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='apple_music_url')
+    THEN ALTER TABLE profiles ADD COLUMN apple_music_url text; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='display_name')
+    THEN ALTER TABLE profiles ADD COLUMN display_name text; END IF;
+END $$;
+ 
+-- Allow users to update their own profile
+DROP POLICY IF EXISTS "update own profile" ON profiles;
+CREATE POLICY "update own profile" ON profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+Step 2 — Create the Settings page
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/settings
+cat << 'HEREDOC' > src/app/settings/page.js
+// File: src/app/settings/page.js
+'use client'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+ 
+const INPUT_STYLE = {
+  display:'block', width:'100%', padding:'0.6rem 0.8rem',
+  background:'#1a1a1a', border:'1px solid #333', color:'#fff',
+  borderRadius:4, fontSize:'0.95rem', marginBottom:'0.5rem', boxSizing:'border-box'
+}
+const LABEL_STYLE = { display:'block', color:'#aaa', fontSize:'0.8rem',
+  letterSpacing:'0.04em', marginBottom:'0.3rem', marginTop:'1rem' }
+const SAVE_BTN = { background:'var(--pink)', color:'#fff', border:'none',
+  padding:'0.55rem 1.4rem', cursor:'pointer', borderRadius:4, fontSize:'0.9rem' }
+const SECTION_STYLE = { background:'#0d0d0d', border:'1px solid #222',
+  borderRadius:8, padding:'1.5rem', marginBottom:'1.5rem' }
+ 
+export default function Settings() {
+  const router = useRouter()
+  const [user, setUser] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [username, setUsername] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [bio, setBio] = useState('')
+  const [spotifyUrl, setSpotifyUrl] = useState('')
+  const [appleMusicUrl, setAppleMusicUrl] = useState('')
+  const [favAlbums, setFavAlbums] = useState(Array(5).fill(''))
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [msg, setMsg] = useState({ text: '', type: '' })
+  const [avatarUrl, setAvatarUrl] = useState('')
+ 
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data?.user) { router.push('/auth'); return }
+      setUser(data.user)
+      const { data: prof } = await supabase.from('profiles').select('*').eq('id', data.user.id).single()
+      if (prof) {
+        setProfile(prof)
+        setUsername(prof.username || '')
+        setDisplayName(prof.display_name || '')
+        setBio(prof.bio || '')
+        setSpotifyUrl(prof.spotify_url || '')
+        setAppleMusicUrl(prof.apple_music_url || '')
+        setAvatarUrl(prof.avatar_url || '')
+        const favs = Array.isArray(prof.favorite_albums) ? prof.favorite_albums : []
+        setFavAlbums([...favs, ...Array(5).fill('')].slice(0, 5))
+      }
+    })
+  }, [])
+ 
+  function flash(text, type = 'success') {
+    setMsg({ text, type })
+    setTimeout(() => setMsg({ text: '', type: '' }), 3000)
+  }
+ 
+  async function saveProfile() {
+    const { error } = await supabase.from('profiles').update({
+      username: username.trim(),
+      display_name: displayName.trim(),
+      bio: bio.trim(),
+      spotify_url: spotifyUrl.trim(),
+      apple_music_url: appleMusicUrl.trim(),
+      favorite_albums: favAlbums.filter(a => a.trim()),
+    }).eq('id', user.id)
+    flash(error ? 'Error: ' + error.message : 'Profile saved!', error ? 'error' : 'success')
+  }
+ 
+  async function changePassword() {
+    if (newPassword !== confirmPw) { flash('Passwords do not match', 'error'); return }
+    if (newPassword.length < 8) { flash('Password must be 8+ characters', 'error'); return }
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    flash(error ? 'Error: ' + error.message : 'Password updated!', error ? 'error' : 'success')
+    setNewPassword(''); setConfirmPw('')
+  }
+ 
+  async function uploadAvatar(file) {
+    const ext = file.name.split('.').pop()
+    const path = user.id + '/avatar.' + ext
+    const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    if (error) { flash('Upload error: ' + error.message, 'error'); return }
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+    await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
+    setAvatarUrl(publicUrl)
+    flash('Photo updated!')
+  }
+ 
+  if (!user) return <p style={{ padding:'2rem', color:'#888' }}>Loading...</p>
+ 
+  return (
+    <div style={{ maxWidth:640, margin:'2rem auto', padding:'0 1rem' }}>
+      <h1 style={{ color:'var(--pink)', marginBottom:'0.25rem' }}>Settings</h1>
+      <p style={{ color:'#888', marginBottom:'2rem', fontSize:'0.9rem' }}>
+        Manage your account and preferences
+      </p>
+ 
+      {msg.text && (
+        <div style={{
+          background: msg.type === 'error' ? '#3d0000' : '#003d1a',
+          border: '1px solid ' + (msg.type === 'error' ? '#cc0000' : '#00aa44'),
+          color: '#fff', padding:'0.75rem 1rem', borderRadius:4, marginBottom:'1rem'
+        }}>
+          {msg.text}
+        </div>
+      )}
+ 
+      {/* Profile Photo */}
+      <div style={SECTION_STYLE}>
+        <h2 style={{ marginTop:0 }}>Profile Photo</h2>
+        <div style={{ display:'flex', alignItems:'center', gap:'1.5rem' }}>
+          {avatarUrl
+            ? <img src={avatarUrl} style={{ width:80, height:80, borderRadius:'50%', objectFit:'cover',
+                border:'3px solid var(--pink)' }} />
+            : <div style={{ width:80, height:80, borderRadius:'50%',
+                background:'linear-gradient(135deg,var(--pink) 0%,#7B2FF7 100%)',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:'2rem', fontWeight:700, color:'#fff' }}>
+                {username?.charAt(0)?.toUpperCase() || '?'}
+              </div>
+          }
+          <label style={{ ...SAVE_BTN, display:'inline-block', cursor:'pointer' }}>
+            Upload Photo
+            <input type='file' accept='image/*' style={{ display:'none' }}
+              onChange={e => e.target.files[0] && uploadAvatar(e.target.files[0])} />
+          </label>
+        </div>
+      </div>
+ 
+      {/* Profile Info */}
+      <div style={SECTION_STYLE}>
+        <h2 style={{ marginTop:0 }}>Profile Info</h2>
+        <label style={LABEL_STYLE}>USERNAME</label>
+        <input style={INPUT_STYLE} value={username} onChange={e => setUsername(e.target.value)} placeholder="username" />
+        <label style={LABEL_STYLE}>DISPLAY NAME</label>
+        <input style={INPUT_STYLE} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Display Name" />
+        <label style={LABEL_STYLE}>BIO</label>
+        <textarea style={{ ...INPUT_STYLE, height:80, resize:'vertical' }} value={bio} onChange={e => setBio(e.target.value)} placeholder="Tell people about your taste..." />
+        <button style={SAVE_BTN} onClick={saveProfile}>Save Profile</button>
+      </div>
+ 
+      {/* Favorite Albums */}
+      <div style={SECTION_STYLE}>
+        <h2 style={{ marginTop:0 }}>Favorite Albums</h2>
+        <p style={{ color:'#888', fontSize:'0.85rem' }}>These appear at the top of your profile. Enter album titles.</p>
+        {favAlbums.map((album, i) => (
+          <div key={i} style={{ display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.4rem' }}>
+            <span style={{ color:'var(--pink)', fontWeight:700, width:20, flexShrink:0 }}>#{i+1}</span>
+            <input style={{ ...INPUT_STYLE, marginBottom:0 }}
+              value={album}
+              onChange={e => { const a = [...favAlbums]; a[i] = e.target.value; setFavAlbums(a) }}
+              placeholder={'Favorite album #' + (i+1)} />
+          </div>
+        ))}
+        <button style={{ ...SAVE_BTN, marginTop:'0.5rem' }} onClick={saveProfile}>Save Albums</button>
+      </div>
+ 
+      {/* Streaming Links */}
+      <div style={SECTION_STYLE}>
+        <h2 style={{ marginTop:0 }}>Streaming Links</h2>
+        <p style={{ color:'#888', fontSize:'0.85rem' }}>Let others follow you on streaming platforms.</p>
+        <label style={LABEL_STYLE}>SPOTIFY PROFILE URL</label>
+        <input style={INPUT_STYLE} value={spotifyUrl} onChange={e => setSpotifyUrl(e.target.value)} placeholder="https://open.spotify.com/user/..." />
+        <label style={LABEL_STYLE}>APPLE MUSIC PROFILE URL</label>
+        <input style={INPUT_STYLE} value={appleMusicUrl} onChange={e => setAppleMusicUrl(e.target.value)} placeholder="https://music.apple.com/profile/..." />
+        <button style={SAVE_BTN} onClick={saveProfile}>Save Links</button>
+      </div>
+ 
+      {/* Change Password */}
+      <div style={SECTION_STYLE}>
+        <h2 style={{ marginTop:0 }}>Change Password</h2>
+        <label style={LABEL_STYLE}>NEW PASSWORD</label>
+        <input type='password' style={INPUT_STYLE} value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder='New password (8+ chars, uppercase, number, special)' />
+        <label style={LABEL_STYLE}>CONFIRM PASSWORD</label>
+        <input type='password' style={INPUT_STYLE} value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder='Confirm new password' />
+        <button style={SAVE_BTN} onClick={changePassword}>Update Password</button>
+      </div>
+ 
+      {/* Privacy */}
+      <div style={SECTION_STYLE}>
+        <h2 style={{ marginTop:0 }}>Privacy</h2>
+        <p style={{ color:'#aaa', fontSize:'0.9rem', lineHeight:1.6 }}>
+          Your email address is never shown publicly. Your ratings are public by default.
+          Your username and profile photo are visible to all users.
+          You can delete your account by contacting us at privacy@bangerratios.com.
+        </p>
+      </div>
+    </div>
+  )
+}
+HEREDOC
+
+Step 3 — Add Settings link to Nav
+Open src/app/components/Nav.js. Find the links array and add Settings:
+grep -n 'PROFILE\|FRIENDS\|ABOUT\|links' ~/Desktop/banger-ratios/src/app/components/Nav.js | head -10
+Add this line to the links array (after PROFILE or wherever makes sense):
+    { href: '/settings', label: 'SETTINGS' },
+
+Step 4 — Show favorite albums on profile page
+In src/app/profile/page.js, find where the profile content renders and add the favorite albums section. Use grep to find the right line:
+grep -n 'username\|profile\.bio\|return\|<main' ~/Desktop/banger-ratios/src/app/profile/page.js | head -20
+Add this block after the user info / bio section:
+{/* Favorite Albums — shows at top of profile */}
+{profile?.favorite_albums?.length > 0 && (
+  <div style={{ marginBottom:'1.5rem' }}>
+    <h3 style={{ color:'var(--pink)', fontSize:'0.85rem', letterSpacing:'0.06em',
+      textTransform:'uppercase', marginBottom:'0.5rem' }}>Favorite Albums</h3>
+    <ol style={{ margin:0, paddingLeft:'1.2rem', color:'#ccc' }}>
+      {profile.favorite_albums.map((album, i) => (
+        <li key={i} style={{ marginBottom:'0.3rem', fontSize:'0.9rem' }}>{album}</li>
+      ))}
+    </ol>
+  </div>
+)}
+ 
+{/* Streaming links */}
+{(profile?.spotify_url || profile?.apple_music_url) && (
+  <div style={{ display:'flex', gap:'0.75rem', marginBottom:'1.5rem', flexWrap:'wrap' }}>
+    {profile.spotify_url && (
+      <a href={profile.spotify_url} target='_blank' rel='noopener noreferrer'
+        style={{ background:'#1DB954', color:'#fff', padding:'0.4rem 1rem',
+          borderRadius:20, textDecoration:'none', fontSize:'0.85rem', fontWeight:600 }}>
+        🎵 Spotify
+      </a>
+    )}
+    {profile.apple_music_url && (
+      <a href={profile.apple_music_url} target='_blank' rel='noopener noreferrer'
+        style={{ background:'#FC3C44', color:'#fff', padding:'0.4rem 1rem',
+          borderRadius:20, textDecoration:'none', fontSize:'0.85rem', fontWeight:600 }}>
+        🎵 Apple Music
+      </a>
+    )}
+  </div>
+)}
+
+🔄  CACHE & PUSH CHECKPOINT
+npm run build   (fix any errors first)
+git add .
+git commit -m "describe change"
+git push
+→  Wait 60 seconds → check www.bangerratios.com
+
+
+SECTION 8  —  COMMUNITY RATED — FIX LONG ARTIST NAMES
+
+Run this to append the fix to globals.css (use >>, never >):
+cd ~/Desktop/banger-ratios
+cat << 'HEREDOC' >> src/app/globals.css
+ 
+/* ====== Community Rated card fix — BR DEP XIII ====== */
+.album-card { display: flex; flex-direction: column; }
+.album-card-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.album-card-artist {
+  color: #aaa;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+HEREDOC
+
+Then in your community/page.js, add the class names to the artist and title elements:
+// Find and update these elements in community/page.js
+ 
+// BEFORE
+<p>{album.artist}</p>
+ 
+// AFTER
+<p className="album-card-artist" title={album.artist}>{album.artist}</p>
+→  The title attribute shows the full name on hover. Always include it when truncating.
+
+🔄  CACHE & PUSH CHECKPOINT
+npm run build   (fix any errors first)
+git add .
+git commit -m "describe change"
+git push
+→  Wait 60 seconds → check www.bangerratios.com
+
+
+SECTION 9  —  LEADERBOARD — GENRE TABS FOR TOP 3
+
+First check what genres are in your database:
+SELECT DISTINCT genre FROM albums ORDER BY genre;
+Then run this to check the current structure of your leaderboard file:
+head -40 ~/Desktop/banger-ratios/src/app/leaderboard/page.js
+grep -n 'useState\|map\|album\|leaderboard' ~/Desktop/banger-ratios/src/app/leaderboard/page.js | head -20
+Add the genre state to the leaderboard component. Find the component opening line, then add after existing useState lines:
+// Add these lines after existing useState declarations
+// Edit the GENRES list to match your actual database values exactly
+const GENRES = ['All', 'Hip-Hop', 'Indie Rock', 'Electronic', 'Pop', 'R&B', 'Classical', 'Jazz']
+const [activeGenre, setActiveGenre] = useState('All')
+ 
+const filteredAlbums = activeGenre === 'All'
+  ? albums   // ← replace "albums" with your actual state variable name
+  : albums.filter(a => a.genre === activeGenre)
+Then add the tab bar at the top of the return statement:
+{/* Genre tabs — paste as first element inside return */}
+<div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap', marginBottom:'1.5rem' }}>
+  {GENRES.map(genre => (
+    <button key={genre} onClick={() => setActiveGenre(genre)} style={{
+      background: activeGenre === genre ? 'var(--pink)' : '#1a1a1a',
+      color: '#fff',
+      border: activeGenre === genre ? 'none' : '1px solid #333',
+      padding: '0.4rem 1rem',
+      cursor: 'pointer',
+      borderRadius: 20,
+      fontSize: '0.82rem',
+      fontWeight: activeGenre === genre ? 700 : 400,
+    }}>
+      {genre}
+    </button>
+  ))}
+</div>
+ 
+{/* Then replace your existing albums.map with filteredAlbums.map */}
+{filteredAlbums.map((album, i) => (
+  <div key={album.id} style={{
+    border: i < 3 ? '2px solid var(--pink)' : '1px solid #222',
+    padding: '0.9rem 1rem',
+    marginBottom: '0.5rem',
+    borderRadius: 6,
+    background: i === 0 ? '#1a0010' : i === 1 ? '#140010' : 'transparent'
+  }}>
+    <span style={{ color:'var(--pink)', fontWeight:700, marginRight:12, fontSize:'1.1rem' }}>
+      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '#' + (i+1)}
+    </span>
+    <span style={{ fontWeight: i < 3 ? 600 : 400 }}>{album.title}</span>
+    <span style={{ float:'right', color:'var(--pink)', fontWeight:600 }}>
+      {album.banger_ratio}%
+    </span>
+  </div>
+))}
+
+🔄  CACHE & PUSH CHECKPOINT
+npm run build   (fix any errors first)
+git add .
+git commit -m "describe change"
+git push
+→  Wait 60 seconds → check www.bangerratios.com
+
+
+SECTION 10  —  NAV — FIX EXCESS SPACING BETWEEN TABS
+
+The nav links have too much gap. Run this patch to reduce the gap from 1.5rem to 0.75rem:
+cd ~/Desktop/banger-ratios
+ 
+node -e "
+const fs = require('fs')
+const path = 'src/app/components/Nav.js'
+let code = fs.readFileSync(path, 'utf8')
+// Reduce gap between nav links
+code = code.replace(/gap:'1\.5rem'/g, \"gap:'0.75rem'\")
+code = code.replace(/gap: '1\.5rem'/g, \"gap: '0.75rem'\")
+code = code.replace(/gap:\"1\.5rem\"/g, \"gap:'0.75rem'\")
+fs.writeFileSync(path, code)
+console.log('Nav gap reduced')
+"
+
+If the node command does not find the gap, open Nav.js in VS Code and use Cmd+F to find gap and change the value in the nav-right div from whatever it currently is to 0.75rem. Also check globals.css:
+# Check current nav gap values
+grep -n 'gap\|nav-right\|nav-inner\|nav-link' ~/Desktop/banger-ratios/src/app/components/Nav.js
+grep -n 'nav' ~/Desktop/banger-ratios/src/app/globals.css
+If the nav uses CSS classes, add an override to globals.css:
+cat << 'HEREDOC' >> src/app/globals.css
+ 
+/* Nav spacing fix — BR DEP XIII */
+.nav-right { gap: 0.75rem !important; }
+.nav-inner { gap: 0.5rem !important; }
+.nav-link { letter-spacing: 0.03em; }
+HEREDOC
+
+🔄  CACHE & PUSH CHECKPOINT
+npm run build   (fix any errors first)
+git add .
+git commit -m "describe change"
+git push
+→  Wait 60 seconds → check www.bangerratios.com
+
+
+SECTION 11  —  BOT & DDOS PROTECTION
+
+Good news: Vercel and Supabase already provide significant protection out of the box. This section layers on additional free measures.
+
+Layer 1 — Vercel Firewall (free, already active)
+•	Vercel automatically blocks known malicious IPs and applies DDoS mitigation on all plans
+•	Go to vercel.com → your project → Settings → Firewall → verify it shows "Active"
+•	Pro tip: Enable "Attack Challenge Mode" temporarily if you ever see a traffic spike
+
+Layer 2 — Supabase rate limiting for auth endpoints
+Supabase lets you limit how many signup/login attempts happen per hour. Go to:
+•	supabase.com → your project → Authentication → Rate Limits
+•	Set "Email signups per hour" to 10 (default is unlimited)
+•	Set "Token refreshes per hour" to 60
+•	Set "Emails sent per hour" to 10
+
+Layer 3 — Middleware rate limiting in Next.js
+This blocks IPs that make too many requests too quickly. Create this file:
+cd ~/Desktop/banger-ratios
+cat << 'HEREDOC' > src/middleware.js
+// File: src/middleware.js
+import { NextResponse } from 'next/server'
+ 
+// Simple in-memory rate limiter (resets on cold start)
+// For production, use Upstash Redis for persistent limits
+const rateMap = new Map()
+ 
+export function middleware(request) {
+  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const now = Date.now()
+  const windowMs = 60 * 1000  // 1 minute
+  const maxRequests = 60      // 60 requests per minute per IP
+ 
+  const entry = rateMap.get(ip) || { count: 0, start: now }
+ 
+  if (now - entry.start > windowMs) {
+    entry.count = 1
+    entry.start = now
+  } else {
+    entry.count++
+  }
+  rateMap.set(ip, entry)
+ 
+  // Clean old entries occasionally
+  if (rateMap.size > 5000) {
+    for (const [k, v] of rateMap) {
+      if (now - v.start > windowMs * 2) rateMap.delete(k)
+    }
+  }
+ 
+  if (entry.count > maxRequests) {
+    return new NextResponse('Too many requests', {
+      status: 429,
+      headers: { 'Retry-After': '60' }
+    })
+  }
+ 
+  return NextResponse.next()
+}
+ 
+export const config = {
+  matcher: ['/api/:path*', '/auth/:path*'],
+}
+HEREDOC
+
+Layer 4 — Add security headers
+Add these headers to next.config.js to protect against common attacks:
+# First see your current next.config.js
+cat ~/Desktop/banger-ratios/next.config.js
+Replace or update next.config.js with:
+cat << 'HEREDOC' > next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+          { key: 'Content-Security-Policy',
+            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: blob:; connect-src *;" },
+        ],
+      },
+    ]
+  },
+}
+ 
+module.exports = nextConfig
+HEREDOC
+
+🔄  CACHE & PUSH CHECKPOINT
+npm run build   (fix any errors first)
+git add .
+git commit -m "describe change"
+git push
+→  Wait 60 seconds → check www.bangerratios.com
+
+
+SECTION 12  —  TERMS & CONDITIONS + COPYRIGHT 2026 FOOTER
+
+⚠  I am not a lawyer and this is not legal advice. These are starting-point terms based on common patterns for music rating platforms. You should have a qualified attorney review before launch if users will create accounts or submit content.
+
+What your T&C should cover — key sections
+Acceptance of Terms	By using the site, users agree to these terms. State the effective date.
+Who Can Use the Site	Age requirement (recommend 13+ or 18+). Account responsibility.
+User Content	Users own their ratings/reviews. You get a license to display them. No hate speech, no spam.
+Intellectual Property	Banger Ratios branding is yours. Album names/artwork belong to their owners. You display them for commentary/criticism (fair use).
+Prohibited Conduct	No scraping, no fake accounts, no harassment, no automated voting.
+Disclaimers	Site provided as-is. You are not responsible for third-party content.
+Limitation of Liability	Cap your liability. Standard boilerplate.
+Privacy	Link to your privacy policy. What data you collect (email, ratings). Supabase processes it.
+Termination	You can remove accounts that violate terms.
+Changes to Terms	You can update these terms. Users should check periodically.
+Contact	Email address for legal/privacy questions.
+
+Create the Terms page
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/terms
+cat << 'HEREDOC' > src/app/terms/page.js
+// File: src/app/terms/page.js
+export const metadata = { title: 'Terms & Conditions — Banger Ratios' }
+ 
+export default function Terms() {
+  return (
+    <div style={{ maxWidth:720, margin:'2rem auto', padding:'0 1.5rem', color:'#ccc', lineHeight:1.7 }}>
+      <h1 style={{ color:'var(--pink)' }}>Terms &amp; Conditions</h1>
+      <p style={{ color:'#888', fontSize:'0.85rem' }}>Effective date: January 1, 2026 &nbsp;·&nbsp; Last updated: February 2026</p>
+ 
+      <h2>1. Acceptance of Terms</h2>
+      <p>By accessing or using Banger Ratios (bangerratios.com), you agree to be bound by these Terms and Conditions. If you do not agree, do not use the site.</p>
+ 
+      <h2>2. Eligibility</h2>
+      <p>You must be at least 13 years old to use this site. By creating an account, you represent that you meet this requirement. If you are under 18, you should review these terms with a parent or guardian.</p>
+ 
+      <h2>3. Your Account</h2>
+      <p>You are responsible for maintaining the security of your account and password. You agree not to share your login credentials. Banger Ratios is not liable for any loss resulting from unauthorized use of your account.</p>
+ 
+      <h2>4. User Content</h2>
+      <p>You retain ownership of the ratings, reviews, and other content you submit. By submitting content, you grant Banger Ratios a non-exclusive, worldwide, royalty-free license to display, reproduce, and distribute that content on the platform. You agree not to submit content that is hateful, harassing, spam, or otherwise harmful.</p>
+ 
+      <h2>5. Intellectual Property</h2>
+      <p>The Banger Ratios name, logo, and original content are owned by Banger Ratios. Album titles, artist names, and album artwork are the property of their respective owners and are referenced on this platform for criticism, commentary, and educational purposes consistent with fair use principles.</p>
+ 
+      <h2>6. Prohibited Conduct</h2>
+      <p>You agree not to: (a) use automated tools to scrape or submit ratings; (b) create fake accounts or manipulate ratings; (c) harass other users; (d) attempt to gain unauthorized access to any part of the platform; (e) use the site for any unlawful purpose.</p>
+ 
+      <h2>7. Privacy</h2>
+      <p>Your use of the site is also governed by our Privacy Policy. We collect your email address and the ratings you submit. This data is stored securely via Supabase. We do not sell your data to third parties.</p>
+ 
+      <h2>8. Disclaimers</h2>
+      <p>Banger Ratios is provided 'as is' without warranties of any kind. We do not guarantee uninterrupted or error-free operation. Album ratings represent community opinions and not the views of Banger Ratios.</p>
+ 
+      <h2>9. Limitation of Liability</h2>
+      <p>To the maximum extent permitted by law, Banger Ratios shall not be liable for any indirect, incidental, or consequential damages arising from your use of the site.</p>
+ 
+      <h2>10. Termination</h2>
+      <p>We reserve the right to suspend or terminate accounts that violate these terms, at our sole discretion and without prior notice.</p>
+ 
+      <h2>11. Changes to These Terms</h2>
+      <p>We may update these terms from time to time. Continued use of the site after changes are posted constitutes your acceptance of the revised terms.</p>
+ 
+      <h2>12. Contact</h2>
+      <p>For questions about these terms, contact us at: <a href="mailto:legal@bangerratios.com" style={{ color:'var(--pink)' }}>legal@bangerratios.com</a></p>
+ 
+      <p style={{ marginTop:'3rem', color:'#555', fontSize:'0.8rem' }}>
+        &copy; 2026 Banger Ratios. All rights reserved.
+      </p>
+    </div>
+  )
+}
+HEREDOC
+
+Create a Footer component with copyright + links
+cd ~/Desktop/banger-ratios
+cat << 'HEREDOC' > src/app/components/Footer.js
+// File: src/app/components/Footer.js
+import Link from 'next/link'
+ 
+export default function Footer() {
+  return (
+    <footer style={{
+      borderTop: '1px solid #1a1a1a',
+      background: '#080808',
+      padding: '2rem',
+      marginTop: '4rem',
+      textAlign: 'center',
+      color: '#555',
+      fontSize: '0.82rem'
+    }}>
+      <div style={{ display:'flex', justifyContent:'center', gap:'1.5rem',
+        flexWrap:'wrap', marginBottom:'1rem' }}>
+        <Link href='/about' style={{ color:'#888', textDecoration:'none' }}>About</Link>
+        <Link href='/terms' style={{ color:'#888', textDecoration:'none' }}>Terms &amp; Conditions</Link>
+        <Link href='/settings' style={{ color:'#888', textDecoration:'none' }}>Settings</Link>
+        <a href='mailto:legal@bangerratios.com' style={{ color:'#888', textDecoration:'none' }}>Contact</a>
+      </div>
+      <p style={{ margin:0 }}>
+        &copy; 2026 Banger Ratios. All rights reserved.
+        &nbsp;&nbsp;·&nbsp;&nbsp;
+        Built for music lovers.
+      </p>
+    </footer>
+  )
+}
+HEREDOC
+
+Add Footer to layout.js
+Open src/app/layout.js. Find the import lines at the top and add:
+import Footer from './components/Footer'
+Then in the JSX, find </main> (the closing main tag) and add the Footer immediately after it:
+        <main>{children}</main>
+        <Footer />
+      </body>
+
+🔄  CACHE & PUSH CHECKPOINT
+npm run build   (fix any errors first)
+git add .
+git commit -m "describe change"
+git push
+→  Wait 60 seconds → check www.bangerratios.com
+
+
+SECTION 13  —  THE HEREDOC> PROBLEM — WHAT IT IS AND HOW TO ESCAPE
+
+heredoc> is NOT an error. It means your terminal is waiting for you to finish typing a multi-line command. It appears when you used << 'HEREDOC' (or << EOF) and the terminal has not seen the closing HEREDOC or EOF word yet.
+
+Why it happens
+The cat << 'HEREDOC' pattern tells your shell "everything until you see the word HEREDOC on its own line is the file content." If the closing HEREDOC word is missing, mistyped, or has a space before it, the terminal keeps waiting.
+
+How to escape from heredoc>
+You see heredoc>	Type the closing word on its own line and press Enter
+Closing word was HEREDOC	Type:   HEREDOC   then Enter
+Closing word was EOF	Type:   EOF   then Enter
+Nothing works	Press Ctrl+C to cancel the whole command
+
+# Example — if you see heredoc> and your closing word is HEREDOC:
+HEREDOC
+ 
+# Or press Ctrl+C to cancel entirely and start over
+
+How to avoid it
+•	Copy-paste the ENTIRE command block at once, not line by line
+•	Make sure the closing word (HEREDOC or EOF) appears on its very own line with NO spaces before or after it
+•	The opening and closing word must match exactly — same capitalisation
+•	If you are on a Mac, use Terminal.app or iTerm2, not the VS Code integrated terminal for heredoc commands — VS Code terminal sometimes mishandles paste formatting
+
+Testing that your heredoc worked
+# After running a heredoc command, always verify the file was created:
+ls -la src/app/friends/page.js
+ 
+# Check the first few lines look right:
+head -5 src/app/friends/page.js
+
+
+SECTION 14  —  FINAL PUSH, CHEAT SHEET & CACHE CHECKPOINTS
+
+Order of operations for DEP XIII
+1.	Run SQL from Section 7 Step 1 in Supabase
+2.	Run all terminal commands in Sections 3, 6, 8, 10, 11, 12 (one section at a time)
+3.	After each section: npm run build → confirm no errors → git add . → git commit → git push
+4.	Do Sections 2, 4, 5, 7, 9 which involve VS Code edits
+5.	Final build and push
+
+Final push
+cd ~/Desktop/banger-ratios
+npm run build
+# Must show: Compiled successfully
+ 
+git add .
+git commit -m "BR DEP XIII: all features deployed"
+git push
+# Wait ~60 seconds then check www.bangerratios.com
+
+Pre-deploy checklist
+•	News banner scrolls at readable pace (90s)
+•	Profile photo upload button works — camera icon appears on avatar
+•	Settings page loads at /settings with all sections
+•	Favorite albums appear at top of profile page
+•	Spotify and Apple Music links appear on profile
+•	Friends page has 🔍 search button
+•	Artists page shows more artists with real photos where available
+•	Community Rated: long artist names truncate with ...
+•	Leaderboard: genre tabs switch correctly
+•	Nav links have tighter spacing
+•	Terms page accessible at /terms
+•	Footer shows © 2026 Banger Ratios on every page
+•	Sign up with new email: no "Database error saving new user"
+•	npm run build returns zero errors
+
+Quick Reference
+Local folder	~/Desktop/banger-ratios
+Live site	https://www.bangerratios.com
+Local test	http://localhost:3000
+Supabase SQL	supabase.com → SQL Editor
+Supabase Rate Limits	supabase.com → Authentication → Rate Limits
+Vercel Firewall	vercel.com → your project → Settings → Firewall
+Vercel env vars	vercel.com → Settings → Environment Variables
+Link preview test	https://www.opengraph.xyz
+Build cache clear	rm -rf .next   (WITH the dot)
+Start dev server	npm run dev
+Test before push	npm run build   (must pass every time)
+New settings page	/settings
+Terms page	/terms
+Jump to line in VS Code	Cmd+G (Mac) or Ctrl+G (Windows) → type line number
+Find variable names	grep -n "useState" src/app/FILE.js
+escape heredoc>	Type the closing word (HEREDOC or EOF) then Enter, or Ctrl+C
+
+Troubleshooting
+heredoc> stuck in terminal	Type HEREDOC (or EOF) on its own line and press Enter. Or Ctrl+C.
+Cmd+F not finding code	Use grep -n "term" src/app/FILE.js to find line number, then Cmd+G to jump there.
+Artist photos not loading	iTunes lookup requires a valid itunes_id. Check artist.id is set in FEATURED_ARTISTS.
+Settings page 404	Confirm file exists: ls src/app/settings/page.js
+Favorite albums not showing on profile	Check column exists: SELECT favorite_albums FROM profiles LIMIT 1 in Supabase.
+Footer not appearing	Confirm Footer is imported and added to layout.js below </main>.
+Rate limiter blocking you	The middleware limits 60 req/min per IP. Increase maxRequests if it blocks you during dev.
+npm run build fails after nav changes	Check Nav.js for unclosed JSX tags. Run: npx next lint
+git push rejected	Run git pull first, then push.
+
+
+■ BANGER RATIOS  ·  BR DEP XIII  ·  The Full-Feature Edition  ·  jamestfilmer-ops  ·  bangerratios.com  ·  © 2026
+

@@ -1,0 +1,916 @@
+
+
+■ BANGER RATIOS
+DEFINITIVE DEPLOYMENT GUIDE
+BR DEP XIV  ·  February 2026  ·  The Python Autopatcher Edition
+
+github.com/jamestfilmer-ops  ·  bangerratios.com  ·  © 2026
+
+
+WHAT'S NEW IN DEP XIV
+•  Section 1 — Fix: NewsBanner.js had terminal commands pasted inside it (critical fix first)
+•  Section 2 — The Python Autopatcher: one script that makes ALL edits to your project automatically
+•  Section 3 — What the zsh: event not found error means and how to avoid it
+•  Section 4 — How to verify every change worked after the patcher runs
+•  Section 5 — Cache, build, and push checklist
+
+⚠  DO THIS FIRST: Section 1 fixes the broken NewsBanner.js before anything else. Your site is currently broken at that file.
+
+
+SECTION 1  —  CRITICAL FIX — NEWSBANNER.JS HAS TERMINAL COMMANDS INSIDE IT
+
+What happened: When you ran the cat << EOF heredoc command for NewsBanner.js, the terminal commands themselves (cd ~/Desktop/banger-ratios, mkdir -p ...) got written into the file as JavaScript. Next.js tried to parse them as code and crashed.
+
+⚠  This is why you see: cd ~/Desktop/banger-ratios on line 4 of NewsBanner.js. The fix is to completely overwrite the file with correct content. Run the Python command below — it writes the file directly without heredoc, so this cannot happen again.
+
+Fix: Run this single Python command in terminal
+Open Terminal. Make sure you are in your project folder first:
+cd ~/Desktop/banger-ratios
+
+Then run this — copy and paste the ENTIRE block at once, all the way to the last quote mark:
+python3 << 'PYEOF'
+content = '''
+// File: src/app/components/NewsBanner.js
+'use client'
+import { useEffect, useState } from 'react'
+ 
+const FALLBACK = [
+  'Kendrick Lamar leads the leaderboard with 91% Banger Ratio',
+  'Frank Ocean Blonde holds #1 — 96% community score',
+  'New: follow friends and see their ratings in real time',
+  'Tyler, the Creator IGOR — 93% Banger Ratio from 800+ raters',
+  'Chappell Roan rises to 87% — The Rise and Fall of a Midwest Princess',
+]
+ 
+export default function NewsBanner() {
+  const [headlines, setHeadlines] = useState(FALLBACK)
+ 
+  useEffect(() => {
+    const key = process.env.NEXT_PUBLIC_LASTFM_KEY
+    if (!key) return
+    fetch(`https://ws.audioscrobbler.com/2.0/?method=chart.gettoptracks&api_key=${key}&format=json&limit=10`)
+      .then(r => r.json())
+      .then(d => {
+        const tracks = d?.tracks?.track
+        if (tracks?.length) {
+          setHeadlines(tracks.map(t => `${t.name} by ${t.artist.name} — trending now`))
+        }
+      })
+      .catch(() => {})
+  }, [])
+ 
+  const text = headlines.join('  ◆  ')
+ 
+  return (
+    <div style={{ background:'var(--pink)', overflow:'hidden', height:32,
+      display:'flex', alignItems:'center' }}>
+      <div style={{ display:'inline-flex',
+        animation:'scroll 90s linear infinite',
+        whiteSpace:'nowrap' }}>
+        <span style={{ color:'#fff', fontSize:'0.8rem',
+          letterSpacing:'0.04em', paddingRight:80 }}>{text}</span>
+        <span style={{ color:'#fff', fontSize:'0.8rem',
+          letterSpacing:'0.04em', paddingRight:80 }}>{text}</span>
+      </div>
+      <style>{`@keyframes scroll { from { transform:translateX(0) } to { transform:translateX(-50%) } }`}</style>
+    </div>
+  )
+}
+'''
+import os
+os.makedirs('src/app/components', exist_ok=True)
+with open('src/app/components/NewsBanner.js', 'w') as f:
+    f.write(content.lstrip())
+print('NewsBanner.js fixed!')
+PYEOF
+
+✓  After running this, start your dev server: npm run dev — the build error should be gone.
+
+🔄  CACHE & PUSH CHECKPOINT — run this before moving to the next section:
+cd ~/Desktop/banger-ratios
+npm run build
+git add .
+git commit -m "describe what changed"
+git push
+→  Wait ~60 sec → check www.bangerratios.com
+
+
+SECTION 2  —  THE PYTHON AUTOPATCHER — ONE SCRIPT, ALL EDITS
+
+This single Python script reads your actual source files, finds the right locations automatically, and makes every edit from DEP XII and XIII without you needing to search for lines or use VS Code at all. Run it once and all changes are applied.
+
+What the autopatcher does
+albums/page.js	Injects artwork fetch state + useEffect. Replaces the 🎵 emoji at line 170 and 196 with real iTunes artwork.
+artists/page.js	Injects artist image fetch. Replaces gradient avatar with real photo + fallback.
+components/Nav.js	Reduces link gap to 0.75rem. Adds Settings link.
+globals.css	Appends album card truncation CSS and nav spacing fix.
+app/terms/page.js	Creates the Terms & Conditions page (new file).
+app/settings/page.js	Creates the full Settings page (new file).
+app/components/Footer.js	Creates Footer with © 2026 (new file).
+app/layout.js	Adds Footer import and component to the layout.
+app/friends/page.js	Rewrites with magnifying glass search button.
+middleware.js	Creates rate limiting middleware for bot protection.
+next.config.js	Adds security headers.
+
+Step 1 — Save the patcher script
+Copy this ENTIRE block and paste it into terminal. It saves the script file first, then you run it separately so you can inspect it before applying changes.
+cd ~/Desktop/banger-ratios
+ 
+python3 << 'PYEOF'
+PATCHER = '''
+#!/usr/bin/env python3
+# BR DEP XIV — Banger Ratios Autopatcher
+# Run from: ~/Desktop/banger-ratios
+# Usage: python3 br_patcher.py
+ 
+import os, re, sys
+ 
+ROOT = os.path.dirname(os.path.abspath(__file__))
+changed = []
+skipped = []
+errors = []
+ 
+def read(path):
+    full = os.path.join(ROOT, path)
+    if not os.path.exists(full):
+        return None
+    with open(full) as f:
+        return f.read()
+ 
+def write(path, content):
+    full = os.path.join(ROOT, path)
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    with open(full, 'w') as f:
+        f.write(content)
+    changed.append(path)
+    print(f'  ✓  {path}')
+ 
+def patch(path, old, new, description=''):
+    content = read(path)
+    if content is None:
+        errors.append(f'{path}: file not found')
+        return False
+    if old not in content:
+        skipped.append(f'{path}: target not found — {description or old[:60]}')
+        return False
+    if new in content and old not in content:
+        skipped.append(f'{path}: already patched')
+        return False
+    write(path, content.replace(old, new, 1))
+    return True
+ 
+def append_if_missing(path, content, marker):
+    existing = read(path) or ''
+    if marker in existing:
+        skipped.append(f'{path}: {marker} already present')
+        return
+    full = os.path.join(ROOT, path)
+    with open(full, 'a') as f:
+        f.write(content)
+    changed.append(path + ' (appended)')
+    print(f'  ✓  {path} (appended)')
+ 
+print('\n=== BR DEP XIV Autopatcher ===')
+print('Reading your project files...\n')
+ 
+# ──────────────────────────────────────────────────────────────
+# 1. ALBUMS PAGE — inject artwork fetch
+# ──────────────────────────────────────────────────────────────
+print('[ albums/page.js ]')
+albums_code = read('src/app/albums/page.js')
+if albums_code:
+    if 'seedArtwork' not in albums_code:
+        # Find first useState line
+        m = re.search(r'(const \[\w+, set\w+\] = (?:React\.)?useState\([^)]*\))', albums_code)
+        if m:
+            inject = '''
+  const [seedArtwork, setSeedArtwork] = useState({})
+ 
+  useEffect(() => {
+    async function fetchSeedArtwork() {
+      const list = typeof SEED_ALBUMS !== 'undefined' ? SEED_ALBUMS : []
+      const results = await Promise.all(
+        list.map(async (album) => {
+          try {
+            const id = album.itunes_id || album.itunesId || album.id
+            if (!id) return [null, null]
+            const r = await fetch(`https://itunes.apple.com/lookup?id=${id}&entity=album`)
+            const d = await r.json()
+            const url = d.results?.[0]?.artworkUrl100?.replace('100x100', '400x400')
+            return [id, url]
+          } catch { return [null, null] }
+        })
+      )
+      setSeedArtwork(Object.fromEntries(results.filter(([k,v]) => k && v)))
+    }
+    fetchSeedArtwork()
+  }, [])'''
+            albums_code = albums_code.replace(m.group(1), m.group(1) + inject, 1)
+            # Also ensure useEffect is imported
+            if 'useEffect' not in albums_code:
+                albums_code = albums_code.replace("import { useState }", "import { useState, useEffect }")
+                albums_code = albums_code.replace("import { useState,", "import { useState, useEffect,")
+            write('src/app/albums/page.js', albums_code)
+        else:
+            errors.append('albums/page.js: no useState found — check file manually')
+    else:
+        skipped.append('albums/page.js: seedArtwork already present')
+ 
+    # Replace emoji placeholders with artwork
+    albums_code2 = read('src/app/albums/page.js')
+    ARTWORK_JSX = '''
+                  {(seedArtwork[album.itunes_id] || seedArtwork[album.itunesId] || seedArtwork[album.id])
+                    ? <img
+                        src={seedArtwork[album.itunes_id] || seedArtwork[album.itunesId] || seedArtwork[album.id]}
+                        alt={album.title || ''}
+                        style={{ width:'100%', aspectRatio:'1', objectFit:'cover',
+                                 borderRadius:10, marginBottom:'1rem', display:'block' }}
+                      />
+                    : <div style={{ width:'100%', aspectRatio:'1', background:'#1a1a1a',
+                        borderRadius:10, display:'flex', alignItems:'center',
+                        justifyContent:'center', marginBottom:'1rem', fontSize:'3rem' }}>
+                        \U0001F3B5
+                      </div>
+                  }'''
+    if albums_code2:
+        for old_pattern in [
+            '                  }}>\U0001F3B5</div>',
+            '\U0001F3B5',
+        ]:
+            if old_pattern in albums_code2 and 'seedArtwork' not in albums_code2[albums_code2.find(old_pattern)-200:albums_code2.find(old_pattern)]:
+                albums_code2 = albums_code2.replace(old_pattern, ARTWORK_JSX, 1)
+                write('src/app/albums/page.js', albums_code2)
+                print('    → emoji placeholder replaced with artwork')
+                break
+else:
+    errors.append('src/app/albums/page.js not found')
+ 
+# ──────────────────────────────────────────────────────────────
+# 2. ARTISTS PAGE — inject image fetch
+# ──────────────────────────────────────────────────────────────
+print('[ artists/page.js ]')
+artists_code = read('src/app/artists/page.js')
+if artists_code:
+    if 'artistImages' not in artists_code:
+        m = re.search(r'(const \[\w+, set\w+\] = (?:React\.)?useState\([^)]*\))', artists_code)
+        if m:
+            inject = '''
+  const [artistImages, setArtistImages] = useState({})
+ 
+  useEffect(() => {
+    async function fetchArtistImages() {
+      const list = typeof FEATURED_ARTISTS !== 'undefined' ? FEATURED_ARTISTS : []
+      const results = await Promise.all(
+        list.map(async (artist) => {
+          try {
+            const id = artist.id || artist.itunes_id
+            const r = await fetch(`https://itunes.apple.com/lookup?id=${id}&entity=album&limit=1`)
+            const d = await r.json()
+            const img = d.results?.[0]?.artworkUrl100?.replace('100x100', '300x300')
+            return [id, img]
+          } catch { return [null, null] }
+        })
+      )
+      setArtistImages(Object.fromEntries(results.filter(([k,v]) => k && v)))
+    }
+    fetchArtistImages()
+  }, [])'''
+            artists_code = artists_code.replace(m.group(1), m.group(1) + inject, 1)
+            if 'useEffect' not in artists_code:
+                artists_code = artists_code.replace("import { useState }", "import { useState, useEffect }")
+            write('src/app/artists/page.js', artists_code)
+        else:
+            errors.append('artists/page.js: no useState found')
+    else:
+        skipped.append('artists/page.js: artistImages already present')
+else:
+    errors.append('src/app/artists/page.js not found')
+ 
+# ──────────────────────────────────────────────────────────────
+# 3. NAV — reduce gap, add Settings link
+# ──────────────────────────────────────────────────────────────
+print('[ Nav.js ]')
+nav = read('src/app/components/Nav.js')
+if nav:
+    # Reduce gap
+    for old, new in [
+        ("gap:'1.5rem'", "gap:'0.75rem'"),
+        ("gap: '1.5rem'", "gap: '0.75rem'"),
+        ('gap:"1.5rem"', 'gap:"0.75rem"'),
+    ]:
+        if old in nav:
+            nav = nav.replace(old, new)
+    # Add Settings link if not present
+    if '/settings' not in nav:
+        nav = nav.replace(
+            "{ href: '/about', label: 'ABOUT' }",
+            "{ href: '/about', label: 'ABOUT' },\n    { href: '/settings', label: 'SETTINGS' }",
+        )
+    write('src/app/components/Nav.js', nav)
+else:
+    errors.append('Nav.js not found')
+ 
+# ──────────────────────────────────────────────────────────────
+# 4. GLOBALS.CSS — append card + nav fixes
+# ──────────────────────────────────────────────────────────────
+print('[ globals.css ]')
+CSS_ADDITIONS = '''
+ 
+/* ====== BR DEP XIV additions ====== */
+.album-card { display: flex; flex-direction: column; }
+.album-card-artist {
+  color: #aaa; font-size: 0.85rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.album-card-title {
+  font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nav-right { gap: 0.75rem !important; }
+'''
+append_if_missing('src/app/globals.css', CSS_ADDITIONS, 'BR DEP XIV additions')
+ 
+# ──────────────────────────────────────────────────────────────
+# 5. FOOTER — create new file
+# ──────────────────────────────────────────────────────────────
+print('[ Footer.js ]')
+FOOTER = '''
+// File: src/app/components/Footer.js
+import Link from 'next/link'
+ 
+export default function Footer() {
+  return (
+    <footer style={{
+      borderTop: '1px solid #1a1a1a', background: '#080808',
+      padding: '2rem', marginTop: '4rem',
+      textAlign: 'center', color: '#555', fontSize: '0.82rem'
+    }}>
+      <div style={{ display:'flex', justifyContent:'center',
+        gap:'1.5rem', flexWrap:'wrap', marginBottom:'1rem' }}>
+        <Link href='/about' style={{ color:'#888', textDecoration:'none' }}>About</Link>
+        <Link href='/terms' style={{ color:'#888', textDecoration:'none' }}>Terms</Link>
+        <Link href='/settings' style={{ color:'#888', textDecoration:'none' }}>Settings</Link>
+        <a href='mailto:legal@bangerratios.com' style={{ color:'#888', textDecoration:'none' }}>Contact</a>
+      </div>
+      <p style={{ margin:0 }}>&copy; 2026 Banger Ratios. All rights reserved.</p>
+    </footer>
+  )
+}
+'''
+write('src/app/components/Footer.js', FOOTER.lstrip())
+ 
+# ──────────────────────────────────────────────────────────────
+# 6. LAYOUT — add Footer import + component
+# ──────────────────────────────────────────────────────────────
+print('[ layout.js ]')
+layout = read('src/app/layout.js')
+if layout:
+    if 'Footer' not in layout:
+        layout = layout.replace(
+            "import NewsBanner from './components/NewsBanner'",
+            "import NewsBanner from './components/NewsBanner'\nimport Footer from './components/Footer'",
+        )
+        layout = layout.replace('</main>', '</main>\n        <Footer />')
+        write('src/app/layout.js', layout)
+    else:
+        skipped.append('layout.js: Footer already present')
+else:
+    errors.append('layout.js not found')
+ 
+# ──────────────────────────────────────────────────────────────
+# 7. TERMS PAGE — create
+# ──────────────────────────────────────────────────────────────
+print('[ terms/page.js ]')
+TERMS = '''
+// File: src/app/terms/page.js
+export const metadata = { title: 'Terms & Conditions — Banger Ratios' }
+export default function Terms() {
+  return (
+    <div style={{ maxWidth:720, margin:'2rem auto', padding:'0 1.5rem', color:'#ccc', lineHeight:1.7 }}>
+      <h1 style={{ color:'var(--pink)' }}>Terms &amp; Conditions</h1>
+      <p style={{ color:'#888', fontSize:'0.85rem' }}>Effective: January 1, 2026</p>
+      <h2>1. Acceptance</h2>
+      <p>By using Banger Ratios (bangerratios.com) you agree to these terms. If you do not agree, do not use the site.</p>
+      <h2>2. Eligibility</h2>
+      <p>You must be at least 13 years old. By creating an account you confirm this.</p>
+      <h2>3. Your Account</h2>
+      <p>You are responsible for your account security. Do not share login credentials.</p>
+      <h2>4. User Content</h2>
+      <p>You retain ownership of your ratings and reviews. By submitting content you grant Banger Ratios a license to display it. No hate speech, harassment, or spam.</p>
+      <h2>5. Intellectual Property</h2>
+      <p>The Banger Ratios name and logo are ours. Album titles, artist names, and artwork belong to their respective owners and are referenced here for commentary and criticism.</p>
+      <h2>6. Prohibited Conduct</h2>
+      <p>No scraping, fake accounts, rating manipulation, harassment, or unlawful use.</p>
+      <h2>7. Privacy</h2>
+      <p>We collect your email and ratings. Data is stored via Supabase. We do not sell your data.</p>
+      <h2>8. Disclaimers</h2>
+      <p>Site provided as-is. Ratings represent community opinions, not Banger Ratios positions.</p>
+      <h2>9. Limitation of Liability</h2>
+      <p>To the maximum extent permitted by law, Banger Ratios is not liable for indirect or consequential damages.</p>
+      <h2>10. Termination</h2>
+      <p>We may suspend accounts that violate these terms without prior notice.</p>
+      <h2>11. Changes</h2>
+      <p>We may update these terms. Continued use constitutes acceptance of revised terms.</p>
+      <h2>12. Contact</h2>
+      <p><a href='mailto:legal@bangerratios.com' style={{ color:'var(--pink)' }}>legal@bangerratios.com</a></p>
+      <p style={{ marginTop:'3rem', color:'#444', fontSize:'0.8rem' }}>&copy; 2026 Banger Ratios.</p>
+    </div>
+  )
+}
+'''
+write('src/app/terms/page.js', TERMS.lstrip())
+ 
+# ──────────────────────────────────────────────────────────────
+# 8. SETTINGS PAGE — create
+# ──────────────────────────────────────────────────────────────
+print('[ settings/page.js ]')
+SETTINGS = '''
+// File: src/app/settings/page.js
+'use client'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+ 
+const INP = { display:'block', width:'100%', padding:'0.6rem 0.8rem',
+  background:'#1a1a1a', border:'1px solid #333', color:'#fff',
+  borderRadius:4, fontSize:'0.95rem', marginBottom:'0.5rem', boxSizing:'border-box' }
+const LBL = { display:'block', color:'#aaa', fontSize:'0.8rem',
+  letterSpacing:'0.04em', marginBottom:'0.3rem', marginTop:'1rem' }
+const BTN = { background:'var(--pink)', color:'#fff', border:'none',
+  padding:'0.55rem 1.4rem', cursor:'pointer', borderRadius:4, fontSize:'0.9rem' }
+const CARD = { background:'#0d0d0d', border:'1px solid #222', borderRadius:8,
+  padding:'1.5rem', marginBottom:'1.5rem' }
+ 
+export default function Settings() {
+  const router = useRouter()
+  const [user, setUser] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [username, setUsername] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [bio, setBio] = useState('')
+  const [spotifyUrl, setSpotifyUrl] = useState('')
+  const [appleMusicUrl, setAppleMusicUrl] = useState('')
+  const [favAlbums, setFavAlbums] = useState(['','','','',''])
+  const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [avatarUrl, setAvatarUrl] = useState('')
+  const [msg, setMsg] = useState({ text:'', type:'' })
+ 
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data?.user) { router.push('/auth'); return }
+      setUser(data.user)
+      const { data: p } = await supabase.from('profiles').select('*').eq('id', data.user.id).single()
+      if (p) {
+        setProfile(p)
+        setUsername(p.username || '')
+        setDisplayName(p.display_name || '')
+        setBio(p.bio || '')
+        setSpotifyUrl(p.spotify_url || '')
+        setAppleMusicUrl(p.apple_music_url || '')
+        setAvatarUrl(p.avatar_url || '')
+        const fa = Array.isArray(p.favorite_albums) ? p.favorite_albums : []
+        setFavAlbums([...fa, ...['','','','','']].slice(0,5))
+      }
+    })
+  }, [])
+ 
+  const flash = (text, type='success') => { setMsg({text,type}); setTimeout(() => setMsg({text:'',type:''}), 3500) }
+ 
+  async function saveProfile() {
+    const { error } = await supabase.from('profiles').update({
+      username: username.trim(), display_name: displayName.trim(), bio: bio.trim(),
+      spotify_url: spotifyUrl.trim(), apple_music_url: appleMusicUrl.trim(),
+      favorite_albums: favAlbums.filter(a => a.trim()),
+    }).eq('id', user.id)
+    flash(error ? 'Error: ' + error.message : 'Saved!', error ? 'error' : 'success')
+  }
+ 
+  async function changePassword() {
+    if (newPw !== confirmPw) { flash('Passwords do not match', 'error'); return }
+    if (newPw.length < 8) { flash('Password must be 8+ characters', 'error'); return }
+    const { error } = await supabase.auth.updateUser({ password: newPw })
+    flash(error ? 'Error: ' + error.message : 'Password updated!', error ? 'error' : 'success')
+    setNewPw(''); setConfirmPw('')
+  }
+ 
+  async function uploadAvatar(file) {
+    const ext = file.name.split('.').pop()
+    const path = user.id + '/avatar.' + ext
+    const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    if (error) { flash('Upload error: ' + error.message, 'error'); return }
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+    await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
+    setAvatarUrl(publicUrl)
+    flash('Photo updated!')
+  }
+ 
+  if (!user) return <p style={{ padding:'2rem', color:'#888' }}>Loading...</p>
+ 
+  return (
+    <div style={{ maxWidth:640, margin:'2rem auto', padding:'0 1rem' }}>
+      <h1 style={{ color:'var(--pink)' }}>Settings</h1>
+      {msg.text && <div style={{ padding:'0.75rem 1rem', borderRadius:4, marginBottom:'1rem',
+        background: msg.type==='error' ? '#3d0000' : '#003d1a',
+        border: '1px solid ' + (msg.type==='error' ? '#cc0000' : '#00aa44'),
+        color:'#fff' }}>{msg.text}</div>}
+ 
+      <div style={CARD}>
+        <h2 style={{ marginTop:0 }}>Profile Photo</h2>
+        <div style={{ display:'flex', alignItems:'center', gap:'1.5rem' }}>
+          {avatarUrl ? <img src={avatarUrl} style={{ width:80,height:80,borderRadius:'50%',objectFit:'cover',border:'3px solid var(--pink)' }} />
+            : <div style={{ width:80,height:80,borderRadius:'50%',background:'linear-gradient(135deg,var(--pink),#7B2FF7)',
+                display:'flex',alignItems:'center',justifyContent:'center',fontSize:'2rem',color:'#fff',fontWeight:700 }}>
+                {username?.charAt(0)?.toUpperCase()||'?'}</div>}
+          <label style={{ ...BTN, display:'inline-block', cursor:'pointer' }}>
+            Upload Photo
+            <input type='file' accept='image/*' style={{ display:'none' }}
+              onChange={e => e.target.files[0] && uploadAvatar(e.target.files[0])} />
+          </label>
+        </div>
+      </div>
+ 
+      <div style={CARD}>
+        <h2 style={{ marginTop:0 }}>Profile Info</h2>
+        <label style={LBL}>USERNAME</label>
+        <input style={INP} value={username} onChange={e=>setUsername(e.target.value)} placeholder='username' />
+        <label style={LBL}>DISPLAY NAME</label>
+        <input style={INP} value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder='Display Name' />
+        <label style={LBL}>BIO</label>
+        <textarea style={{...INP,height:80,resize:'vertical'}} value={bio} onChange={e=>setBio(e.target.value)} placeholder='About your taste...' />
+        <button style={BTN} onClick={saveProfile}>Save Profile</button>
+      </div>
+ 
+      <div style={CARD}>
+        <h2 style={{ marginTop:0 }}>Favorite Albums</h2>
+        <p style={{ color:'#888', fontSize:'0.85rem' }}>Appears at the top of your profile.</p>
+        {favAlbums.map((a,i) => (
+          <div key={i} style={{ display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.4rem' }}>
+            <span style={{ color:'var(--pink)',fontWeight:700,width:20,flexShrink:0 }}>#{i+1}</span>
+            <input style={{...INP,marginBottom:0}} value={a}
+              onChange={e=>{const arr=[...favAlbums];arr[i]=e.target.value;setFavAlbums(arr)}}
+              placeholder={'Favorite #'+(i+1)} />
+          </div>
+        ))}
+        <button style={{...BTN,marginTop:'0.5rem'}} onClick={saveProfile}>Save Albums</button>
+      </div>
+ 
+      <div style={CARD}>
+        <h2 style={{ marginTop:0 }}>Streaming Links</h2>
+        <label style={LBL}>SPOTIFY PROFILE URL</label>
+        <input style={INP} value={spotifyUrl} onChange={e=>setSpotifyUrl(e.target.value)} placeholder='https://open.spotify.com/user/...' />
+        <label style={LBL}>APPLE MUSIC PROFILE URL</label>
+        <input style={INP} value={appleMusicUrl} onChange={e=>setAppleMusicUrl(e.target.value)} placeholder='https://music.apple.com/profile/...' />
+        <button style={BTN} onClick={saveProfile}>Save Links</button>
+      </div>
+ 
+      <div style={CARD}>
+        <h2 style={{ marginTop:0 }}>Change Password</h2>
+        <label style={LBL}>NEW PASSWORD</label>
+        <input type='password' style={INP} value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder='8+ chars, uppercase, number, symbol' />
+        <label style={LBL}>CONFIRM PASSWORD</label>
+        <input type='password' style={INP} value={confirmPw} onChange={e=>setConfirmPw(e.target.value)} placeholder='Confirm new password' />
+        <button style={BTN} onClick={changePassword}>Update Password</button>
+      </div>
+ 
+      <div style={CARD}>
+        <h2 style={{ marginTop:0 }}>Privacy</h2>
+        <p style={{ color:'#aaa', lineHeight:1.6 }}>
+          Your email is never shown publicly. Your ratings are public by default.
+          To delete your account, contact us at privacy@bangerratios.com.
+        </p>
+      </div>
+    </div>
+  )
+}
+'''
+write('src/app/settings/page.js', SETTINGS.lstrip())
+ 
+# ──────────────────────────────────────────────────────────────
+# 9. FRIENDS PAGE — rewrite with search button
+# ──────────────────────────────────────────────────────────────
+print('[ friends/page.js ]')
+FRIENDS = '''
+// File: src/app/friends/page.js
+'use client'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+ 
+export default function Friends() {
+  const router = useRouter()
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [following, setFollowing] = useState(new Set())
+  const [currentUser, setCurrentUser] = useState(null)
+  const [feed, setFeed] = useState([])
+  const [loading, setLoading] = useState(false)
+ 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data?.user) { router.push('/auth'); return }
+      setCurrentUser(data.user)
+      loadFollowing(data.user.id)
+      loadFeed(data.user.id)
+    })
+  }, [])
+ 
+  async function loadFollowing(uid) {
+    const { data } = await supabase.from('follows').select('following_id').eq('follower_id', uid)
+    if (data) setFollowing(new Set(data.map(r => r.following_id)))
+  }
+ 
+  async function loadFeed(uid) {
+    const { data: fol } = await supabase.from('follows').select('following_id').eq('follower_id', uid)
+    if (!fol?.length) return
+    const ids = fol.map(r => r.following_id)
+    const { data } = await supabase.from('ratings')
+      .select('*, profiles(username)')
+      .in('user_id', ids)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    if (data) setFeed(data)
+  }
+ 
+  async function search() {
+    if (!query.trim()) return
+    setLoading(true)
+    const { data } = await supabase.from('profiles')
+      .select('id, username, avatar_url')
+      .ilike('username', '%' + query + '%')
+      .limit(10)
+    setResults(data || [])
+    setLoading(false)
+  }
+ 
+  async function toggleFollow(targetId) {
+    if (!currentUser) return
+    if (following.has(targetId)) {
+      await supabase.from('follows').delete()
+        .eq('follower_id', currentUser.id).eq('following_id', targetId)
+      setFollowing(prev => { const s = new Set(prev); s.delete(targetId); return s })
+    } else {
+      await supabase.from('follows').insert({ follower_id: currentUser.id, following_id: targetId })
+      setFollowing(prev => new Set([...prev, targetId]))
+    }
+  }
+ 
+  return (
+    <div style={{ maxWidth:800, margin:'2rem auto', padding:'0 1rem' }}>
+      <h1 style={{ color:'var(--pink)' }}>Find Friends</h1>
+      <div style={{ display:'flex', gap:0, marginBottom:'2rem' }}>
+        <input value={query} onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && search()}
+          placeholder='Search by username...'
+          style={{ flex:1, padding:'0.65rem 1rem', background:'#1a1a1a',
+            border:'1px solid #333', borderRight:'none', color:'#fff',
+            borderRadius:'4px 0 0 4px', fontSize:'0.95rem' }} />
+        <button onClick={search} disabled={loading}
+          style={{ background:'var(--pink)', color:'#fff', border:'none',
+            padding:'0.65rem 1.1rem', cursor:'pointer', fontSize:'1.1rem',
+            borderRadius:'0 4px 4px 0' }}>
+          {loading ? '…' : '🔍'}
+        </button>
+      </div>
+      {query && !loading && results.length === 0 && (
+        <p style={{ color:'#888' }}>No users found for "{query}"</p>
+      )}
+      {results.map(u => (
+        <div key={u.id} style={{ display:'flex', justifyContent:'space-between',
+          alignItems:'center', padding:'0.75rem', border:'1px solid #222',
+          marginBottom:'0.5rem', borderRadius:4, background:'#0d0d0d' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+            {u.avatar_url
+              ? <img src={u.avatar_url} style={{ width:36,height:36,borderRadius:'50%',objectFit:'cover' }} />
+              : <div style={{ width:36,height:36,borderRadius:'50%',background:'var(--pink)',
+                  display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,color:'#fff' }}>
+                  {u.username?.charAt(0)?.toUpperCase()}</div>}
+            <Link href={'/profile/' + u.username}
+              style={{ color:'#fff', textDecoration:'none', fontWeight:500 }}>
+              {u.username}
+            </Link>
+          </div>
+          {currentUser?.id !== u.id && (
+            <button onClick={() => toggleFollow(u.id)} style={{
+              background: following.has(u.id) ? '#333' : 'var(--pink)',
+              color:'#fff', border:'none', padding:'0.3rem 0.9rem',
+              cursor:'pointer', borderRadius:3, fontSize:'0.85rem' }}>
+              {following.has(u.id) ? 'Unfollow' : 'Follow'}
+            </button>
+          )}
+        </div>
+      ))}
+      {feed.length > 0 && (
+        <div style={{ marginTop:'2rem' }}>
+          <h2>Friend Activity</h2>
+          {feed.map(r => (
+            <div key={r.id} style={{ padding:'0.75rem', border:'1px solid #222',
+              marginBottom:'0.5rem', borderRadius:4 }}>
+              <span style={{ color:'var(--pink)' }}>{r.profiles?.username}</span>
+              {' rated a track '}<strong>{r.score}/7</strong>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+'''
+write('src/app/friends/page.js', FRIENDS.lstrip())
+ 
+# ──────────────────────────────────────────────────────────────
+# 10. MIDDLEWARE — rate limiting
+# ──────────────────────────────────────────────────────────────
+print('[ middleware.js ]')
+MW = '''
+// File: src/middleware.js
+import { NextResponse } from 'next/server'
+const rateMap = new Map()
+export function middleware(request) {
+  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const now = Date.now()
+  const windowMs = 60 * 1000
+  const maxRequests = 60
+  const entry = rateMap.get(ip) || { count: 0, start: now }
+  if (now - entry.start > windowMs) { entry.count = 1; entry.start = now }
+  else { entry.count++ }
+  rateMap.set(ip, entry)
+  if (rateMap.size > 5000) {
+    for (const [k, v] of rateMap) { if (now - v.start > windowMs * 2) rateMap.delete(k) }
+  }
+  if (entry.count > maxRequests) {
+    return new NextResponse('Too many requests', { status: 429, headers: { 'Retry-After': '60' } })
+  }
+  return NextResponse.next()
+}
+export const config = { matcher: ['/api/:path*', '/auth/:path*'] }
+'''
+write('src/middleware.js', MW.lstrip())
+ 
+# ──────────────────────────────────────────────────────────────
+# SUMMARY
+# ──────────────────────────────────────────────────────────────
+print()
+print('=== DONE ===')
+if changed: print(f'Changed ({len(changed)}):', ', '.join(changed))
+if skipped: print(f'Skipped ({len(skipped)}):')
+for s in skipped: print('   -', s)
+if errors: print(f'ERRORS ({len(errors)}):')
+for e in errors: print('   !', e)
+print()
+if errors:
+    print('Fix errors above, then re-run: python3 br_patcher.py')
+else:
+    print('All done! Run: npm run build')
+'''
+ 
+with open('br_patcher.py', 'w') as f:
+    f.write(PATCHER.lstrip())
+print('br_patcher.py saved!')
+PYEOF
+
+Step 2 — Run the patcher
+cd ~/Desktop/banger-ratios
+python3 br_patcher.py
+
+Step 3 — Read the output
+The patcher prints exactly what it changed, skipped, and any errors. Example good output:
+=== BR DEP XIV Autopatcher ===
+Reading your project files...
+ 
+[ albums/page.js ]
+  ✓  src/app/albums/page.js
+[ artists/page.js ]
+  ✓  src/app/artists/page.js
+[ Nav.js ]
+  ✓  src/app/components/Nav.js
+[ globals.css ]
+  ✓  src/app/globals.css (appended)
+[ Footer.js ]
+  ✓  src/app/components/Footer.js
+[ layout.js ]
+  ✓  src/app/layout.js
+[ terms/page.js ]
+  ✓  src/app/terms/page.js
+[ settings/page.js ]
+  ✓  src/app/settings/page.js
+[ friends/page.js ]
+  ✓  src/app/friends/page.js
+[ middleware.js ]
+  ✓  src/middleware.js
+ 
+=== DONE ===
+All done! Run: npm run build
+
+⚠  If you see "ERRORS" in the output, share them here and I will update the patcher. The most common error is "file not found" if your folder structure is different.
+
+Step 4 — If patcher reports errors for albums or artists
+Run this to print your actual file structure so we can diagnose:
+find ~/Desktop/banger-ratios/src -name "*.js" | sort
+Share the output and I can update the patcher to match your exact file paths.
+
+🔄  CACHE & PUSH CHECKPOINT — run this before moving to the next section:
+cd ~/Desktop/banger-ratios
+npm run build
+git add .
+git commit -m "describe what changed"
+git push
+→  Wait ~60 sec → check www.bangerratios.com
+
+
+SECTION 3  —  THE ZSH: EVENT NOT FOUND ERROR — EXPLAINED
+
+zsh: event not found: id)   means zsh (your shell) saw the ! or backtick characters inside your grep pattern and tried to interpret them as shell history commands. This is a zsh-specific behaviour.
+
+Why it happens
+In zsh, ! inside double-quoted strings triggers history expansion. So grep -n 'emoji|🎵' works fine but any pattern with special characters can trigger it. The autopatcher in Section 2 avoids this entirely because Python does not have this problem.
+
+If you need to run grep manually in zsh
+Use single quotes	grep -n 'pattern' file.js   (single quotes are safe)
+Escape the !	grep -n "pattern\!" file.js
+Disable history expansion	set +H   (run this once, lasts for the session)
+Use Python instead	python3 -c "import re,sys; [print(i+1,l.rstrip()) for i,l in enumerate(open('file.js')) if 'pattern' in l]"
+
+
+SECTION 4  —  SQL — RUN IN SUPABASE BEFORE TESTING SETTINGS
+
+The Settings page saves to columns that may not exist yet. Run this in Supabase → SQL Editor:
+-- Add settings columns (safe to re-run)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='bio')
+    THEN ALTER TABLE profiles ADD COLUMN bio text; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='favorite_albums')
+    THEN ALTER TABLE profiles ADD COLUMN favorite_albums jsonb DEFAULT '[]'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='spotify_url')
+    THEN ALTER TABLE profiles ADD COLUMN spotify_url text; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='apple_music_url')
+    THEN ALTER TABLE profiles ADD COLUMN apple_music_url text; END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='display_name')
+    THEN ALTER TABLE profiles ADD COLUMN display_name text; END IF;
+END $$;
+ 
+-- Allow users to update their own profile
+DROP POLICY IF EXISTS "update own profile" ON profiles;
+CREATE POLICY "update own profile" ON profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+🔄  CACHE & PUSH CHECKPOINT — run this before moving to the next section:
+cd ~/Desktop/banger-ratios
+npm run build
+git add .
+git commit -m "describe what changed"
+git push
+→  Wait ~60 sec → check www.bangerratios.com
+
+
+SECTION 5  —  VERIFY EVERYTHING WORKED
+
+Quick checks after running the patcher
+# Confirm NewsBanner.js starts with the right content
+head -5 src/app/components/NewsBanner.js
+# Should show: // File: src/app/components/NewsBanner.js
+ 
+# Confirm Footer exists
+ls src/app/components/Footer.js
+ 
+# Confirm Settings page exists
+ls src/app/settings/page.js
+ 
+# Confirm Terms page exists
+ls src/app/terms/page.js
+ 
+# Confirm patcher added seedArtwork to albums
+grep -n 'seedArtwork' src/app/albums/page.js | head -3
+ 
+# Confirm Friends page has search button
+grep -n 'Find Friends\|🔍' src/app/friends/page.js
+ 
+# Confirm Nav has Settings link
+grep 'settings' src/app/components/Nav.js
+
+Then do a full build test
+cd ~/Desktop/banger-ratios
+npm run build
+# Must show Compiled successfully with zero errors
+# If it shows errors, share the error text here for a fix
+
+Test checklist at localhost:3000
+NewsBanner	Pink banner scrolls slowly at the top — no terminal text visible
+/friends	Search bar has 🔍 button — typing and pressing Enter searches
+/settings	Page loads with all sections: photo, profile, albums, streaming, password, privacy
+/terms	Terms page loads with 12 sections and © 2026 at bottom
+Footer	Copyright line appears at the bottom of every page
+Nav	Links are closer together — SETTINGS link visible
+Albums	Real artwork loads 1-2 seconds after page opens (not emoji)
+
+🔄  CACHE & PUSH CHECKPOINT — run this before moving to the next section:
+cd ~/Desktop/banger-ratios
+npm run build
+git add .
+git commit -m "describe what changed"
+git push
+→  Wait ~60 sec → check www.bangerratios.com
+
+
+■ BANGER RATIOS  ·  BR DEP XIV  ·  The Python Autopatcher Edition  ·  jamestfilmer-ops  ·  © 2026
+

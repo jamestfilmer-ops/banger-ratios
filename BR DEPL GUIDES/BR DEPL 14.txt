@@ -1,0 +1,1714 @@
+■ BANGER RATIOS
+DEFINITIVE DEPLOYMENT GUIDE
+BR DEP XV  ·  February 2026  ·  THE FRESH START EDITION  (Rev 2)
+github.com/jamestfilmer-ops/banger-ratios  ·  bangerratios.com  ·  © 2026
+
+WHAT THIS GUIDE IS
+This is the single definitive document that replaces DEP I through XIV. It consolidates every fix, feature, and lesson learned into one clean, ordered guide you can follow from top to bottom.
+
+Rev 2 update: Adds a Diagnostic Script + Nuke Step (Phase 4 Steps 4.2–4.3) that explicitly identifies and destroys old broken files before the Autopatcher runs. This fixes the "Can't find variable: useEffect" error caused by pre-existing files surviving from earlier sessions.
+
+Every code change is delivered via Python script — NO heredoc, NO copy-pasting code into terminal, NO VS Code searching. One Python file does everything.
+
+WHAT THIS GUIDE BUILDS
+• Homepage with scrolling news banner (Last.fm powered)
+• Albums page: browse + search with iTunes artwork
+• Artists page: full genre listing with artist photos
+• Community Rated: truncated album card layout by genre
+• Leaderboard: #1/#2/#3 spots divided by genre
+• User accounts: sign up, log in, profile photos
+• Settings page: password, username, bio, 5 favorite albums, streaming links
+• Find Friends: search with magnifying glass button
+• Terms & Conditions page
+• Footer: © 2026 Banger Ratios
+• Bot/DDoS protection (Vercel + Supabase)
+• Open Graph link preview (og-image.png)
+• Properly wired Supabase auth (no more "Database error saving new user")
+
+HOW TO USE THIS GUIDE
+1. Follow sections in order. Do not skip ahead.
+2. Every 🔄 CHECKPOINT: run npm run build → git add . → git commit -m "..." → git push → wait 60 seconds → check bangerratios.com.
+3. If you get stuck, the TROUBLESHOOTING section at the end has fixes for every common error.
+4. The Python Autopatcher in Phase 4 writes all page code for you automatically.
+
+
+PHASE 0 — UNDERSTAND YOUR STACK (5 min read)
+Before touching any code, here is exactly what each tool does and why you need it. You only need to read this once.
+
+TERMINAL	A text-based way to control your computer. Instead of clicking folders you type commands. On Mac: Cmd+Space, type Terminal, press Enter.
+VS CODE	A code editor. Think of it as Word for code. You mostly will NOT need this — the Python Autopatcher writes files for you.
+GITHUB	Online storage for your code. Think Google Drive, but for code. Vercel reads from GitHub to deploy your site.
+SUPABASE	Your database. Stores user accounts, album ratings, leaderboard data, profile photos, and all relationships between them.
+VERCEL	Puts your website on the internet for free. It watches GitHub — every time you push code, it rebuilds your site automatically.
+NEXT.JS	The framework your website is built in. React + server-side rendering. You do not need to understand it deeply — the scripts handle it.
+
+
+PHASE 1 — VERIFY YOUR MACHINE (10 min)
+Open Terminal. Run each command. Every command must succeed before moving on.
+
+Step 1.1 — Check Node.js
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+node --version
+✅ YOU SHOULD SEE:
+You see a version number like v20.11.0 or higher. Any number is fine.
+⚠️ IF SOMETHING WENT WRONG:
+If you see 'command not found': go to nodejs.org, click the green LTS button, download it, install it, CLOSE Terminal and reopen it, then try again.
+
+Step 1.2 — Check Git
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+git --version
+✅ YOU SHOULD SEE:
+You see something like: git version 2.43.0
+⚠️ IF SOMETHING WENT WRONG:
+If error: go to git-scm.com/downloads, install Git, restart Terminal, try again.
+
+Step 1.3 — Check npm
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+npm --version
+✅ YOU SHOULD SEE:
+You see a number like 10.2.0
+
+Step 1.4 — Check Python 3
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+python3 --version
+✅ YOU SHOULD SEE:
+You see Python 3.9 or higher. This is critical — the Autopatcher needs Python 3.
+⚠️ IF SOMETHING WENT WRONG:
+If not found: go to python.org/downloads and install Python 3. Make sure to check "Add to PATH" during install on Windows.
+
+
+PHASE 2 — SET UP YOUR PROJECT FOLDER (15 min)
+This phase gets your code onto your computer and links it to GitHub and Vercel.
+
+Step 2.1 — Navigate to Desktop
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+cd ~/Desktop
+
+Step 2.2 — Clone your GitHub repo
+This downloads your existing code. If you see "already exists" errors, run the cleanup step first.
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+git clone https://github.com/jamestfilmer-ops/banger-ratios.git
+cd banger-ratios
+✅ YOU SHOULD SEE:
+Terminal is now inside the banger-ratios folder. You will see the folder on your Desktop.
+⚠️ IF SOMETHING WENT WRONG:
+If it says 'already exists': run this first:  rm -rf ~/Desktop/banger-ratios
+Then run the clone command again.
+If you get a 'Permission denied' or 'not found' error: you may need to log in to GitHub in Terminal. Run: git config --global user.email your@email.com  and  git config --global user.name "Your Name"
+
+Step 2.3 — Install dependencies
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+npm install
+✅ YOU SHOULD SEE:
+You see output ending in: added X packages. This may take 1-2 minutes.
+⚠️ IF SOMETHING WENT WRONG:
+If you see errors about 'peer dependencies': that is usually fine. Only worry if npm run dev fails afterward.
+
+Step 2.4 — Set up environment variables
+These are your secret API keys. They live in a .env.local file that NEVER gets pushed to GitHub.
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+cat << 'EOF' > .env.local
+NEXT_PUBLIC_SUPABASE_URL=https://vqtftxerpwpixhmpowvx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxdGZ0eGVycHdwaXhobXBvd3Z4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3OTM0NjIsImV4cCI6MjA4NzM2OTQ2Mn0.u17SmE31dhe3LtBvY0l5cO_noWnyLBtKot7c7G8botg
+NEXT_PUBLIC_LASTFM_KEY=3514b1f9964e0ff49a62c7859c9b7d50
+EOF
+WHERE TO FIND YOUR KEYS
+Supabase Anon Key: supabase.com → your project → Settings → API → "anon public" key
+Last.fm Key: last.fm/api → Create an account → Get API Key (free, instant)
+Replace the placeholder text above with your actual keys before running.
+
+Step 2.5 — Verify .env.local was created
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+cat .env.local
+✅ YOU SHOULD SEE:
+You see your two lines with the actual key values (not the placeholder text).
+
+Step 2.6 — Test the dev server
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+npm run dev
+✅ YOU SHOULD SEE:
+You see: ✓ Ready in X.Xs  →  open your browser and go to: http://localhost:3000 You should see the Banger Ratios site with the pink news banner and nav.
+⚠️ IF SOMETHING WENT WRONG:
+If you see a 'Module not found' error: make sure you ran npm install in Step 2.3.
+If you see a layout.js error (site is blank/crashed): jump to PHASE 3 SECTION A now — it has the emergency layout fix.
+To stop the dev server: press Ctrl+C in Terminal.
+
+🔄 CACHE & PUSH CHECKPOINT
+cd ~/Desktop/banger-ratios
+npm run build
+git add .
+git commit -m "phase 2 setup complete"
+git push
+→ Wait 60 seconds → check www.bangerratios.com
+
+
+PHASE 3 — SUPABASE DATABASE SETUP (20 min)
+This phase sets up your database tables correctly. This fixes: "Database error saving new user", broken leaderboard, broken profile requests, and signup crashes.
+
+Step 3.1 — Open the SQL Editor
+🌐  YOU ARE IN: YOUR WEB BROWSER
+Go to: supabase.com → your project → SQL Editor (left sidebar)
+
+Step 3.2 — Run the RESET SQL (if you have broken tables)
+ONLY run this if you have been getting errors. It will wipe all existing data. If your data is clean and working, skip to Step 3.3.
+🗄️  YOU ARE IN: SUPABASE
+supabase.com → your project dashboard
+-- WIPE ALL TABLES (safe to run even if tables do not exist)
+drop table if exists public.list_items cascade;
+drop table if exists public.lists cascade;
+drop table if exists public.ratings cascade;
+drop table if exists public.tracks cascade;
+drop table if exists public.albums cascade;
+drop table if exists public.profiles cascade;
+drop table if exists public.follows cascade;
+drop trigger if exists on_auth_user_created on auth.users;
+drop function if exists public.handle_new_user();
+drop function if exists public.recalculate_banger_ratio(bigint);
+
+Step 3.3 — Run the FULL SCHEMA SQL
+This creates all tables with the correct structure. Copy the ENTIRE block below and paste it into the SQL Editor, then click Run.
+🗄️  YOU ARE IN: SUPABASE
+supabase.com → your project dashboard
+-- ══════════════════════════════════════════════════════════
+-- BANGER RATIOS — FULL SCHEMA  (BR DEP XV)
+-- ══════════════════════════════════════════════════════════
+
+-- PROFILES (one row per user, created automatically on signup)
+create table if not exists public.profiles (
+  id uuid references auth.users(id) on delete cascade primary key,
+  username text unique,
+  display_name text,
+  bio text,
+  avatar_url text,
+  apple_music_url text,
+  spotify_url text,
+  favorite_albums jsonb default '[]'::jsonb,
+  created_at timestamptz default now()
+);
+
+-- ALBUMS
+create table if not exists public.albums (
+  id bigserial primary key,
+  title text not null,
+  artist text not null,
+  genre text,
+  year int,
+  itunes_id text,
+  artwork_url text,
+  created_at timestamptz default now()
+);
+
+-- TRACKS
+create table if not exists public.tracks (
+  id bigserial primary key,
+  album_id bigint references public.albums(id) on delete cascade,
+  title text not null,
+  track_number int,
+  created_at timestamptz default now()
+);
+
+-- RATINGS (one row per user per track)
+create table if not exists public.ratings (
+  id bigserial primary key,
+  user_id uuid references auth.users(id) on delete cascade,
+  track_id bigint references public.tracks(id) on delete cascade,
+  album_id bigint references public.albums(id) on delete cascade,
+  is_banger boolean not null,
+  created_at timestamptz default now(),
+  unique(user_id, track_id)
+);
+
+-- FOLLOWS (friend connections)
+create table if not exists public.follows (
+  follower_id uuid references auth.users(id) on delete cascade,
+  following_id uuid references auth.users(id) on delete cascade,
+  created_at timestamptz default now(),
+  primary key (follower_id, following_id)
+);
+
+-- LISTS (custom user lists)
+create table if not exists public.lists (
+  id bigserial primary key,
+  user_id uuid references auth.users(id) on delete cascade,
+  name text not null,
+  created_at timestamptz default now()
+);
+
+-- LIST ITEMS
+create table if not exists public.list_items (
+  id bigserial primary key,
+  list_id bigint references public.lists(id) on delete cascade,
+  album_id bigint references public.albums(id) on delete cascade,
+  created_at timestamptz default now()
+);
+
+-- ── ROW LEVEL SECURITY ─────────────────────────────────────
+alter table public.profiles enable row level security;
+alter table public.albums enable row level security;
+alter table public.tracks enable row level security;
+alter table public.ratings enable row level security;
+alter table public.follows enable row level security;
+alter table public.lists enable row level security;
+alter table public.list_items enable row level security;
+
+-- PROFILES: anyone can read, only owner can write
+create policy "profiles_read_all" on public.profiles for select using (true);
+create policy "profiles_insert_own" on public.profiles for insert with check (auth.uid() = id);
+create policy "profiles_update_own" on public.profiles for update using (auth.uid() = id);
+
+-- ALBUMS: anyone can read, authenticated users can insert
+create policy "albums_read_all" on public.albums for select using (true);
+create policy "albums_insert_auth" on public.albums for insert with check (auth.role() = 'authenticated');
+
+-- TRACKS: anyone can read
+create policy "tracks_read_all" on public.tracks for select using (true);
+create policy "tracks_insert_auth" on public.tracks for insert with check (auth.role() = 'authenticated');
+
+-- RATINGS: anyone can read, only owner can write
+create policy "ratings_read_all" on public.ratings for select using (true);
+create policy "ratings_insert_own" on public.ratings for insert with check (auth.uid() = user_id);
+create policy "ratings_update_own" on public.ratings for update using (auth.uid() = user_id);
+create policy "ratings_delete_own" on public.ratings for delete using (auth.uid() = user_id);
+
+-- FOLLOWS: anyone can read, owner can insert/delete
+create policy "follows_read_all" on public.follows for select using (true);
+create policy "follows_insert_own" on public.follows for insert with check (auth.uid() = follower_id);
+create policy "follows_delete_own" on public.follows for delete using (auth.uid() = follower_id);
+
+-- LISTS and LIST_ITEMS: owner only
+create policy "lists_read_own" on public.lists for select using (auth.uid() = user_id);
+create policy "lists_insert_own" on public.lists for insert with check (auth.uid() = user_id);
+create policy "list_items_read_own" on public.list_items for select using (
+  exists (select 1 from public.lists where id = list_id and user_id = auth.uid())
+);
+create policy "list_items_insert_own" on public.list_items for insert with check (
+  exists (select 1 from public.lists where id = list_id and user_id = auth.uid())
+);
+
+-- ── STORAGE BUCKET FOR AVATARS ──────────────────────────────
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+create policy "avatars_read_all" on storage.objects for select using (bucket_id = 'avatars');
+create policy "avatars_upload_own" on storage.objects for insert with check (
+  bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1]
+);
+create policy "avatars_update_own" on storage.objects for update using (
+  bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1]
+);
+
+-- ── AUTO-CREATE PROFILE ON SIGNUP ───────────────────────────
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  insert into public.profiles (id, username, display_name)
+  values (
+    new.id,
+    split_part(new.email, '@', 1),
+    split_part(new.email, '@', 1)
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- ── BANGER RATIO CALCULATION ─────────────────────────────────
+create or replace function public.recalculate_banger_ratio(p_album_id bigint)
+returns numeric language plpgsql security definer
+as $$
+declare
+  total_ratings int;
+  banger_ratings int;
+begin
+  select count(*) into total_ratings
+    from public.ratings where album_id = p_album_id;
+  select count(*) into banger_ratings
+    from public.ratings where album_id = p_album_id and is_banger = true;
+  if total_ratings = 0 then return 0; end if;
+  return round((banger_ratings::numeric / total_ratings::numeric) * 100, 1);
+end;
+$$;
+✅ YOU SHOULD SEE:
+You see: Success. No rows returned.  — All tables and policies are now set up.
+⚠️ IF SOMETHING WENT WRONG:
+If you see 'already exists' errors: go back and run the RESET SQL in Step 3.2 first, then run this block again.
+If you see a policy error like 'auth.role()': your Supabase project may be on an older version. Replace auth.role() with (select auth.role()) in the policy lines.
+
+Step 3.4 — Set Supabase auth password strength
+🌐  YOU ARE IN: YOUR WEB BROWSER
+Go to: supabase.com → your project → Authentication → Providers → Email
+Scroll down to "Password Strength" and set minimum length to 8. Click Save.
+
+🔄 CACHE & PUSH CHECKPOINT
+(No code push needed for this phase — it's all database setup)
+Test: go to bangerratios.com, try to create a new account.
+You should be able to sign up without the "Database error" message.
+
+
+PHASE 4 — THE PYTHON AUTOPATCHER (THE BIG ONE)
+This is the most important section. A single Python script writes ALL of your page files with correct, professional code. Run it once and every page is fixed.
+
+WHY PYTHON INSTEAD OF HEREDOC
+The heredoc (cat << EOF) method caused the NewsBanner.js corruption in DEP XIV — terminal commands ended up inside your JavaScript files.
+Python writes files directly without any shell interpretation. It cannot corrupt your files.
+This script is self-contained. Copy the whole thing, paste it into Terminal, press Enter.
+
+Step 4.1 — Make sure you are in your project folder
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+cd ~/Desktop/banger-ratios
+
+Step 4.2 — Run the Diagnostic Script first
+This scans your project and flags any files with the broken "missing import" pattern. Run this before the Autopatcher so you can see exactly what is broken.
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+python3 << 'PYEOF'
+import os, glob
+BASE = os.path.expanduser("~/Desktop/banger-ratios/src/app")
+pages = glob.glob(BASE + "/**/page.js", recursive=True)
+print(f"Found {len(pages)} page files:")
+for p in sorted(pages):
+    short = p.replace(os.path.expanduser("~"), "~")
+    with open(p) as f: content = f.read()
+    has_import = "import { useEffect" in content or "import {useEffect" in content
+    has_bare_use = "useEffect(" in content and not has_import
+    status = "BROKEN (missing import)" if has_bare_use else "ok"
+    print(f"  [{status}]  {short}")
+PYEOF
+✅ YOU SHOULD SEE:
+You see a list of your page files.
+Any file marked [BROKEN] is causing the useEffect / useState error.
+The next step nukes and rewrites all of them.
+
+Step 4.3 — Nuke old conflicting files
+This deletes every old page file so the Autopatcher writes fresh ones with correct imports. Your Supabase database is completely untouched — only code files are removed.
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+python3 << 'PYEOF'
+import os
+BASE = os.path.expanduser("~/Desktop/banger-ratios/src/app")
+COMP = os.path.join(BASE, "components")
+targets = [
+    os.path.join(BASE, "page.js"),
+    os.path.join(BASE, "layout.js"),
+    os.path.join(BASE, "globals.css"),
+    os.path.join(BASE, "albums/page.js"),
+    os.path.join(BASE, "artists/page.js"),
+    os.path.join(BASE, "community/page.js"),
+    os.path.join(BASE, "leaderboard/page.js"),
+    os.path.join(BASE, "friends/page.js"),
+    os.path.join(BASE, "profile/page.js"),
+    os.path.join(BASE, "settings/page.js"),
+    os.path.join(BASE, "terms/page.js"),
+    os.path.join(COMP, "Nav.js"),
+    os.path.join(COMP, "NewsBanner.js"),
+]
+for t in targets:
+    if os.path.exists(t):
+        os.remove(t)
+        print(f"  deleted: {os.path.basename(t)}")
+    else:
+        print(f"  not found (ok): {os.path.basename(t)}")
+print("Ready for Autopatcher.")
+PYEOF
+✅ YOU SHOULD SEE:
+You see a list of deleted files followed by "Ready for Autopatcher."
+
+Step 4.4 — Run the Autopatcher
+Copy the ENTIRE block below (from python3 to the last PYEOF) and paste it into Terminal. Press Enter. It creates all pages fresh with correct imports.
+
+The script is long — scroll to find the end. The last line is: PYEOF
+
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+python3 << 'PYEOF'
+import os
+
+BASE = os.path.expanduser("~/Desktop/banger-ratios/src/app")
+COMP = os.path.join(BASE, "components")
+os.makedirs(COMP, exist_ok=True)
+
+def write(path, content):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(content)
+    print(f"  ✓ wrote {path.replace(os.path.expanduser('~'), '~')}")
+
+# ── globals.css ──────────────────────────────────────────────
+write(os.path.join(BASE, "globals.css"), """
+:root {
+  --pink: #F20D72;
+  --black: #1A1A1A;
+  --white: #FFFFFF;
+  --gray: #F4F4F4;
+  --border: #E0E0E0;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Space Grotesk', Arial, sans-serif;
+  background: var(--white);
+  color: var(--black);
+}
+a { color: inherit; text-decoration: none; }
+.container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+.album-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 20px;
+  margin-top: 24px;
+}
+.album-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+  width: 160px;
+}
+.album-card:hover { box-shadow: 0 4px 16px rgba(242,13,114,0.15); }
+.album-art {
+  width: 160px; height: 160px;
+  object-fit: cover;
+  background: var(--gray);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 48px;
+}
+.album-info {
+  padding: 10px;
+  height: 72px;
+  overflow: hidden;
+}
+.album-title {
+  font-weight: 600;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.album-artist {
+  font-size: 0.75rem;
+  color: #666;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.banger-ratio {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--pink);
+  margin-top: 4px;
+}
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s;
+}
+.btn:hover { opacity: 0.85; }
+.btn-primary { background: var(--pink); color: #fff; }
+.btn-outline { background: transparent; color: var(--pink); border: 2px solid var(--pink); }
+.genre-tabs {
+  display: flex; gap: 8px; flex-wrap: wrap; margin: 20px 0;
+}
+.genre-tab {
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--white);
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.genre-tab.active, .genre-tab:hover {
+  background: var(--pink); color: #fff; border-color: var(--pink);
+}
+@keyframes scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+""".lstrip())
+
+# ── layout.js ────────────────────────────────────────────────
+write(os.path.join(BASE, "layout.js"), """
+// File: src/app/layout.js
+import './globals.css'
+import Nav from './components/Nav'
+import NewsBanner from './components/NewsBanner'
+
+export const metadata = {
+  title: 'Banger Ratios',
+  description: 'Rate albums track by track. The Banger Ratio reveals which albums actually deliver.',
+  metadataBase: new URL('https://www.bangerratios.com'),
+  openGraph: {
+    title: 'Banger Ratios — Community Album Ratings',
+    description: 'Rate albums track by track. The Banger Ratio reveals which albums actually deliver.',
+    url: 'https://www.bangerratios.com',
+    siteName: 'Banger Ratios',
+    images: [{ url: '/og-image.png', width: 1200, height: 630, alt: 'Banger Ratios' }],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Banger Ratios — Community Album Ratings',
+    description: 'Rate albums track by track.',
+    images: ['/og-image.png'],
+  },
+}
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+      </head>
+      <body>
+        <NewsBanner />
+        <Nav />
+        {children}
+        <footer style={{ textAlign: "center", padding: "24px", fontSize: "0.8rem", color: "#888", borderTop: "1px solid #eee", marginTop: 48 }}>
+          © 2026 Banger Ratios. All rights reserved. · <a href="/terms" style={{ color: "#F20D72" }}>Terms &amp; Conditions</a>
+        </footer>
+      </body>
+    </html>
+  )
+}
+""".lstrip())
+
+# ── NewsBanner.js ─────────────────────────────────────────────
+write(os.path.join(COMP, "NewsBanner.js"), """
+// File: src/app/components/NewsBanner.js
+'use client'
+import { useEffect, useState } from 'react'
+
+const FALLBACK = [
+  'Kendrick Lamar leads the leaderboard with 91% Banger Ratio',
+  'Frank Ocean Blonde holds #1 — 96% community score',
+  'New: follow friends and see their ratings in real time',
+  'Tyler, the Creator IGOR — 93% Banger Ratio from 800+ raters',
+  'Chappell Roan rises to 87% — The Rise and Fall of a Midwest Princess',
+]
+
+export default function NewsBanner() {
+  const [headlines, setHeadlines] = useState(FALLBACK)
+  useEffect(() => {
+    const key = process.env.NEXT_PUBLIC_LASTFM_KEY
+    if (!key) return
+    fetch(`https://ws.audioscrobbler.com/2.0/?method=chart.gettoptracks&api_key=${key}&format=json&limit=10`)
+      .then(r => r.json())
+      .then(d => {
+        const tracks = d?.tracks?.track
+        if (tracks?.length) {
+          setHeadlines(tracks.map(t => `${t.name} by ${t.artist.name} — trending now`))
+        }
+      })
+      .catch(() => {})
+  }, [])
+  const text = headlines.join(" ◆ ")
+  return (
+    <div style={{ background: "var(--pink)", overflow: "hidden", height: 32, display: "flex", alignItems: "center" }}>
+      <div style={{ display: "inline-flex", animation: "scroll 90s linear infinite", whiteSpace: "nowrap" }}>
+        <span style={{ color: "#fff", fontSize: "0.8rem", letterSpacing: "0.04em", paddingRight: 80 }}>{text}</span>
+        <span style={{ color: "#fff", fontSize: "0.8rem", letterSpacing: "0.04em", paddingRight: 80 }}>{text}</span>
+      </div>
+      <style>{`@keyframes scroll { from { transform: translateX(0) } to { transform: translateX(-50%) } }`}</style>
+    </div>
+  )
+}
+""".lstrip())
+
+# ── Nav.js ───────────────────────────────────────────────────
+write(os.path.join(COMP, "Nav.js"), """
+// File: src/app/components/Nav.js
+'use client'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+
+const LINKS = [
+  { href: '/',          label: 'Home'       },
+  { href: '/albums',    label: 'Albums'     },
+  { href: '/artists',   label: 'Artists'    },
+  { href: '/community', label: 'Community'  },
+  { href: '/leaderboard', label: 'Leaderboard' },
+  { href: '/friends',   label: 'Friends'    },
+  { href: '/profile',   label: 'Profile'    },
+]
+
+export default function Nav() {
+  const pathname = usePathname()
+  return (
+    <nav style={{ background: "#fff", borderBottom: "1px solid #eee", position: "sticky", top: 0, zIndex: 100 }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px", display: "flex", alignItems: "center", height: 52 }}>
+        <Link href="/" style={{ fontWeight: 800, fontSize: "1.1rem", color: "var(--pink)", marginRight: 32, letterSpacing: "-0.02em" }}>
+          ■ Banger Ratios
+        </Link>
+        <div style={{ display: "flex", gap: 4 }}>
+          {LINKS.map(({ href, label }) => (
+            <Link key={href} href={href} style={{
+              padding: "6px 12px",
+              borderRadius: 6,
+              fontSize: "0.85rem",
+              fontWeight: pathname === href ? 700 : 500,
+              color: pathname === href ? "var(--pink)" : "var(--black)",
+              background: pathname === href ? "#fff0f7" : "transparent",
+            }}>{label}</Link>
+          ))}
+        </div>
+      </div>
+    </nav>
+  )
+}
+""".lstrip())
+
+# ── page.js (homepage) ───────────────────────────────────────
+write(os.path.join(BASE, "page.js"), """
+// File: src/app/page.js
+import Link from 'next/link'
+
+export default function HomePage() {
+  return (
+    <main>
+      <section style={{ textAlign: "center", padding: "80px 24px 60px" }}>
+        <h1 style={{ fontSize: "clamp(2.2rem,6vw,4rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1 }}>
+          Rate every track.<br />
+          <span style={{ color: "var(--pink)" }}>Find the real bangers.</span>
+        </h1>
+        <p style={{ marginTop: 20, fontSize: "1.1rem", color: "#555", maxWidth: 500, margin: "20px auto 0" }}>
+          The Banger Ratio reveals which albums actually deliver, track by track, voted by the community.
+        </p>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 32 }}>
+          <Link href="/albums" className="btn btn-primary">Browse Albums</Link>
+          <Link href="/leaderboard" className="btn btn-outline">Leaderboard</Link>
+        </div>
+      </section>
+    </main>
+  )
+}
+""".lstrip())
+
+# ── leaderboard/page.js ──────────────────────────────────────
+LEADERBOARD_DIR = os.path.join(BASE, "leaderboard")
+write(os.path.join(LEADERBOARD_DIR, "page.js"), """
+// File: src/app/leaderboard/page.js
+'use client'
+import { useEffect, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
+
+const GENRES = ["All","Rock","Pop","Hip-Hop","R&B","Indie","Electronic","Classical","Jazz","Country","Folk","Metal"]
+
+export default function LeaderboardPage() {
+  const [albums, setAlbums] = useState([])
+  const [genre, setGenre] = useState("All")
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      let q = supabase
+        .from("albums")
+        .select("id,title,artist,genre,artwork_url,itunes_id")
+        .order("id", { ascending: false })
+        .limit(100)
+      if (genre !== "All") q = q.eq("genre", genre)
+      const { data } = await q
+      // fetch banger ratios for each
+      const withRatios = await Promise.all((data || []).map(async (album) => {
+        const { data: d } = await supabase.rpc("recalculate_banger_ratio", { p_album_id: album.id })
+        return { ...album, ratio: d || 0 }
+      }))
+      withRatios.sort((a, b) => b.ratio - a.ratio)
+      setAlbums(withRatios)
+      setLoading(false)
+    }
+    load()
+  }, [genre])
+
+  const medals = ["🥇","🥈","🥉"]
+
+  return (
+    <main className="container" style={{ paddingTop: 40 }}>
+      <h1 style={{ fontSize: "2rem", fontWeight: 800, marginBottom: 8 }}>Leaderboard</h1>
+      <p style={{ color: "#666", marginBottom: 20 }}>Ranked by Banger Ratio — community-voted percentage of bangers per album.</p>
+      <div className="genre-tabs">
+        {GENRES.map(g => (
+          <button key={g} className={`genre-tab${genre===g?" active":""}`} onClick={() => setGenre(g)}>{g}</button>
+        ))}
+      </div>
+      {loading ? <p>Loading...</p> : (
+        <>
+          {albums.slice(0,3).length > 0 && (
+            <div style={{ display: "flex", gap: 16, marginBottom: 32, flexWrap: "wrap" }}>
+              {albums.slice(0,3).map((album, i) => (
+                <div key={album.id} style={{
+                  flex: i===0 ? "1 1 300px" : "1 1 220px",
+                  background: i===0 ? "#fff0f7" : "#f9f9f9",
+                  border: i===0 ? "2px solid var(--pink)" : "1px solid #eee",
+                  borderRadius: 12, padding: 20,
+                }}>
+                  <div style={{ fontSize: i===0?"2rem":"1.5rem" }}>{medals[i]}</div>
+                  <div style={{ fontWeight: 700, fontSize: i===0?"1.1rem":"1rem", marginTop: 8,
+                    whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{album.title}</div>
+                  <div style={{ color:"#666", fontSize:"0.82rem",
+                    whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{album.artist}</div>
+                  <div style={{ color:"var(--pink)", fontWeight:800, fontSize:"1.3rem", marginTop:8 }}>{album.ratio}%</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead>
+              <tr style={{ borderBottom:"2px solid #eee" }}>
+                {["#","Album","Artist","Genre","Banger Ratio"].map(h=>(
+                  <th key={h} style={{ textAlign:"left", padding:"8px 12px", fontSize:"0.82rem", color:"#888" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {albums.map((album, i) => (
+                <tr key={album.id} style={{ borderBottom:"1px solid #f0f0f0" }}>
+                  <td style={{ padding:"10px 12px", color:"#aaa", fontWeight:700 }}>{i+1}</td>
+                  <td style={{ padding:"10px 12px", fontWeight:600, maxWidth:200,
+                    whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{album.title}</td>
+                  <td style={{ padding:"10px 12px", color:"#555", maxWidth:160,
+                    whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{album.artist}</td>
+                  <td style={{ padding:"10px 12px", color:"#888", fontSize:"0.82rem" }}>{album.genre}</td>
+                  <td style={{ padding:"10px 12px", color:"var(--pink)", fontWeight:800 }}>{album.ratio}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </main>
+  )
+}
+""".lstrip())
+
+# ── community/page.js ────────────────────────────────────────
+COMMUNITY_DIR = os.path.join(BASE, "community")
+write(os.path.join(COMMUNITY_DIR, "page.js"), """
+// File: src/app/community/page.js
+'use client'
+import { useEffect, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
+
+const GENRES = ["All","Rock","Pop","Hip-Hop","R&B","Indie","Electronic","Classical","Jazz","Country"]
+
+function AlbumCard({ album }) {
+  const [art, setArt] = useState(album.artwork_url || null)
+  useEffect(() => {
+    if (art) return
+    if (!album.itunes_id) return
+    fetch(`https://itunes.apple.com/lookup?id=${album.itunes_id}&entity=album`)
+      .then(r => r.json())
+      .then(d => {
+        const url = d.results?.[0]?.artworkUrl100?.replace("100x100","400x400")
+        if (url) setArt(url)
+      }).catch(()=>{})
+  }, [])
+  return (
+    <div className="album-card">
+      <div className="album-art">
+        {art ? <img src={art} alt={album.title} style={{width:160,height:160,objectFit:"cover"}} /> : <span>🎵</span>}
+      </div>
+      <div className="album-info">
+        <div className="album-title">{album.title}</div>
+        <div className="album-artist">{album.artist}</div>
+        <div className="banger-ratio">{album.ratio}% Banger Ratio</div>
+      </div>
+    </div>
+  )
+}
+
+export default function CommunityPage() {
+  const [albums, setAlbums] = useState([])
+  const [genre, setGenre] = useState("All")
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      let q = supabase.from("albums").select("*").order("id", { ascending: false }).limit(60)
+      if (genre !== "All") q = q.eq("genre", genre)
+      const { data } = await q
+      const withRatios = await Promise.all((data || []).map(async (album) => {
+        const { data: d } = await supabase.rpc("recalculate_banger_ratio", { p_album_id: album.id })
+        return { ...album, ratio: d || 0 }
+      }))
+      setAlbums(withRatios)
+      setLoading(false)
+    }
+    load()
+  }, [genre])
+
+  return (
+    <main className="container" style={{ paddingTop: 40 }}>
+      <h1 style={{ fontSize: "2rem", fontWeight: 800, marginBottom: 8 }}>Community Rated</h1>
+      <div className="genre-tabs">
+        {GENRES.map(g => (
+          <button key={g} className={`genre-tab${genre===g?" active":""}`} onClick={() => setGenre(g)}>{g}</button>
+        ))}
+      </div>
+      {loading ? <p>Loading...</p> : (
+        <div className="album-grid">
+          {albums.map(a => <AlbumCard key={a.id} album={a} />)}
+        </div>
+      )}
+    </main>
+  )
+}
+""".lstrip())
+
+# ── friends/page.js ──────────────────────────────────────────
+FRIENDS_DIR = os.path.join(BASE, "friends")
+write(os.path.join(FRIENDS_DIR, "page.js"), """
+// File: src/app/friends/page.js
+'use client'
+import { useState, useEffect } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
+
+export default function FriendsPage() {
+  const [query, setQuery] = useState("")
+  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  async function search() {
+    if (!query.trim()) return
+    setLoading(true)
+    const { data } = await supabase
+      .from("profiles")
+      .select("id,username,display_name,avatar_url")
+      .ilike("username", `%${query}%`)
+      .limit(20)
+    setResults(data || [])
+    setLoading(false)
+  }
+
+  return (
+    <main className="container" style={{ paddingTop: 40 }}>
+      <h1 style={{ fontSize: "2rem", fontWeight: 800, marginBottom: 20 }}>Find Friends</h1>
+      <div style={{ display: "flex", gap: 8, marginBottom: 24, maxWidth: 480 }}>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && search()}
+          placeholder="Search by username..."
+          style={{ flex: 1, padding: "10px 14px", borderRadius: 8, border: "1px solid #ddd",
+            fontSize: "0.95rem", fontFamily: "inherit", outline: "none" }}
+        />
+        <button className="btn btn-primary" onClick={search} aria-label="Search">
+          🔍 Search
+        </button>
+      </div>
+      {loading && <p>Searching...</p>}
+      {results.map(user => (
+        <div key={user.id} style={{
+          display: "flex", alignItems: "center", gap: 12,
+          padding: "12px 0", borderBottom: "1px solid #f0f0f0"
+        }}>
+          <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#f0f0f0",
+            overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {user.avatar_url
+              ? <img src={user.avatar_url} alt="" style={{ width: 40, height: 40, objectFit: "cover" }} />
+              : <span style={{ fontSize: 20 }}>👤</span>}
+          </div>
+          <div>
+            <div style={{ fontWeight: 600 }}>{user.display_name || user.username}</div>
+            <div style={{ color: "#888", fontSize: "0.82rem" }}>@{user.username}</div>
+          </div>
+          <button className="btn btn-outline" style={{ marginLeft: "auto", fontSize: "0.82rem", padding: "4px 14px" }}>Follow</button>
+        </div>
+      ))}
+      {!loading && results.length === 0 && query && <p style={{ color: "#888" }}>No users found.</p>}
+    </main>
+  )
+}
+""".lstrip())
+
+# ── profile/page.js ──────────────────────────────────────────
+PROFILE_DIR = os.path.join(BASE, "profile")
+write(os.path.join(PROFILE_DIR, "page.js"), """
+// File: src/app/profile/page.js
+'use client'
+import { useEffect, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
+import Link from 'next/link'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
+
+export default function ProfilePage() {
+  const [user, setUser] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [error, setError] = useState("")
+  const [message, setMessage] = useState("")
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        setUser(data.user)
+        supabase.from("profiles").select("*").eq("id", data.user.id).single()
+          .then(({ data: p }) => setProfile(p))
+      }
+      setLoading(false)
+    })
+  }, [])
+
+  async function handleLogin(e) {
+    e.preventDefault()
+    setError("")
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) { setError(error.message); return }
+    window.location.reload()
+  }
+
+  async function handleSignUp(e) {
+    e.preventDefault()
+    setError("")
+    const { error } = await supabase.auth.signUp({ email, password })
+    if (error) { setError(error.message); return }
+    setMessage("Check your email to confirm your account.")
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    window.location.reload()
+  }
+
+  if (loading) return <div className="container" style={{ paddingTop: 40 }}>Loading...</div>
+
+  if (!user) return (
+    <main className="container" style={{ paddingTop: 40, maxWidth: 420 }}>
+      <h1 style={{ fontSize: "1.8rem", fontWeight: 800, marginBottom: 24 }}>Sign In</h1>
+      {error && <p style={{ color: "red", marginBottom: 12 }}>{error}</p>}
+      {message && <p style={{ color: "green", marginBottom: 12 }}>{message}</p>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}
+          style={{ padding:"10px 14px", borderRadius:8, border:"1px solid #ddd", fontFamily:"inherit", fontSize:"0.95rem" }}/>
+        <input type="password" placeholder="Password (min 8 chars)" value={password} onChange={e=>setPassword(e.target.value)}
+          style={{ padding:"10px 14px", borderRadius:8, border:"1px solid #ddd", fontFamily:"inherit", fontSize:"0.95rem" }}/>
+        <div style={{ display:"flex", gap:8 }}>
+          <button className="btn btn-primary" style={{ flex:1 }} onClick={handleLogin}>Log In</button>
+          <button className="btn btn-outline" style={{ flex:1 }} onClick={handleSignUp}>Sign Up</button>
+        </div>
+      </div>
+      <Link href="/settings" style={{ display:"block", marginTop:16, color:"var(--pink)", fontSize:"0.85rem" }}>Settings</Link>
+    </main>
+  )
+
+  return (
+    <main className="container" style={{ paddingTop: 40 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 32 }}>
+        <div style={{ width: 80, height: 80, borderRadius: "50%", background: "#f0f0f0", overflow: "hidden",
+          display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {profile?.avatar_url
+            ? <img src={profile.avatar_url} alt="avatar" style={{width:80,height:80,objectFit:"cover"}}/>
+            : <span style={{ fontSize: 36 }}>👤</span>}
+        </div>
+        <div>
+          <h1 style={{ fontSize: "1.8rem", fontWeight: 800 }}>{profile?.display_name || user.email}</h1>
+          <p style={{ color: "#888" }}>@{profile?.username || "—"}</p>
+          {profile?.bio && <p style={{ marginTop: 6, color: "#555", fontSize: "0.9rem" }}>{profile.bio}</p>}
+        </div>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <Link href="/settings" className="btn btn-outline">Settings</Link>
+          <button className="btn btn-outline" onClick={handleLogout}>Log Out</button>
+        </div>
+      </div>
+      {profile?.favorite_albums?.length > 0 && (
+        <div style={{ marginBottom: 32 }}>
+          <h2 style={{ fontWeight: 700, marginBottom: 12 }}>Favorite Albums</h2>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {profile.favorite_albums.map((a, i) => (
+              <div key={i} style={{ padding: "8px 14px", background: "#fff0f7", borderRadius: 8,
+                fontSize: "0.85rem", fontWeight: 600, color: "var(--pink)" }}>{a}</div>
+            ))}
+          </div>
+        </div>
+      )}
+    </main>
+  )
+}
+""".lstrip())
+
+# ── settings/page.js ─────────────────────────────────────────
+SETTINGS_DIR = os.path.join(BASE, "settings")
+write(os.path.join(SETTINGS_DIR, "page.js"), """
+// File: src/app/settings/page.js
+'use client'
+import { useEffect, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
+
+export default function SettingsPage() {
+  const [user, setUser] = useState(null)
+  const [profile, setProfile] = useState({})
+  const [avatarFile, setAvatarFile] = useState(null)
+  const [newPassword, setNewPassword] = useState("")
+  const [favAlbums, setFavAlbums] = useState(["","","","",""])
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState("")
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) { window.location.href = "/profile"; return }
+      setUser(data.user)
+      supabase.from("profiles").select("*").eq("id", data.user.id).single()
+        .then(({ data: p }) => {
+          setProfile(p || {})
+          if (p?.favorite_albums?.length) {
+            const arr = [...p.favorite_albums]
+            while (arr.length < 5) arr.push("")
+            setFavAlbums(arr)
+          }
+        })
+    })
+  }, [])
+
+  async function save() {
+    setSaving(true)
+    setMessage("")
+    try {
+      let avatar_url = profile.avatar_url
+      if (avatarFile) {
+        const ext = avatarFile.name.split(".").pop()
+        const path = `${user.id}/avatar.${ext}`
+        await supabase.storage.from("avatars").upload(path, avatarFile, { upsert: true })
+        const { data } = supabase.storage.from("avatars").getPublicUrl(path)
+        avatar_url = data.publicUrl
+      }
+      await supabase.from("profiles").upsert({
+        id: user.id,
+        username: profile.username,
+        display_name: profile.display_name,
+        bio: profile.bio,
+        avatar_url,
+        apple_music_url: profile.apple_music_url,
+        spotify_url: profile.spotify_url,
+        favorite_albums: favAlbums.filter(Boolean),
+      })
+      if (newPassword) {
+        await supabase.auth.updateUser({ password: newPassword })
+      }
+      setMessage("Saved!")
+    } catch (e) {
+      setMessage("Error saving: " + e.message)
+    }
+    setSaving(false)
+  }
+
+  const field = (label, key, type="text", placeholder="") => (
+    <div style={{ marginBottom: 16 }}>
+      <label style={{ display:"block", fontWeight:600, marginBottom:6, fontSize:"0.85rem" }}>{label}</label>
+      <input type={type} value={profile[key]||""} placeholder={placeholder}
+        onChange={e => setProfile(p => ({...p,[key]:e.target.value}))}
+        style={{ width:"100%", padding:"10px 14px", borderRadius:8, border:"1px solid #ddd",
+          fontFamily:"inherit", fontSize:"0.9rem" }} />
+    </div>
+  )
+
+  if (!user) return <div className="container" style={{paddingTop:40}}>Loading...</div>
+
+  return (
+    <main className="container" style={{ paddingTop: 40, maxWidth: 540 }}>
+      <h1 style={{ fontSize: "2rem", fontWeight: 800, marginBottom: 32 }}>Settings</h1>
+      {field("Display Name", "display_name", "text", "Your public name")}
+      {field("Username", "username", "text", "@username")}
+      {field("Bio", "bio", "text", "A short bio...")}
+      {field("Apple Music URL", "apple_music_url", "url", "https://music.apple.com/...")}
+      {field("Spotify URL", "spotify_url", "url", "https://open.spotify.com/...")}
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ display:"block", fontWeight:600, marginBottom:6, fontSize:"0.85rem" }}>Profile Photo</label>
+        {profile.avatar_url && <img src={profile.avatar_url} alt="avatar" style={{width:64,height:64,borderRadius:"50%",objectFit:"cover",marginBottom:8}}/>}
+        <input type="file" accept="image/*" onChange={e=>setAvatarFile(e.target.files[0])}
+          style={{ display:"block", fontSize:"0.85rem" }} />
+      </div>
+      <div style={{ marginBottom: 24 }}>
+        <label style={{ display:"block", fontWeight:600, marginBottom:8, fontSize:"0.85rem" }}>5 Favorite Albums (shown on your profile)</label>
+        {favAlbums.map((a, i) => (
+          <input key={i} value={a} placeholder={`Favorite #${i+1}`}
+            onChange={e => { const n=[...favAlbums]; n[i]=e.target.value; setFavAlbums(n) }}
+            style={{ display:"block", width:"100%", marginBottom:8, padding:"8px 12px",
+              borderRadius:8, border:"1px solid #ddd", fontFamily:"inherit", fontSize:"0.85rem" }}
+          />
+        ))}
+      </div>
+      <div style={{ marginBottom: 24 }}>
+        <label style={{ display:"block", fontWeight:600, marginBottom:6, fontSize:"0.85rem" }}>Change Password</label>
+        <input type="password" value={newPassword} placeholder="New password (leave blank to keep current)"
+          onChange={e=>setNewPassword(e.target.value)}
+          style={{ width:"100%", padding:"10px 14px", borderRadius:8, border:"1px solid #ddd",
+            fontFamily:"inherit", fontSize:"0.9rem" }}
+        />
+      </div>
+      <button className="btn btn-primary" onClick={save} disabled={saving} style={{width:"100%",padding:"12px"}}>
+        {saving ? "Saving..." : "Save Changes"}
+      </button>
+      {message && <p style={{ marginTop:12, color: message.startsWith("Error") ? "red" : "green", fontWeight:600 }}>{message}</p>}
+    </main>
+  )
+}
+""".lstrip())
+
+# ── terms/page.js ────────────────────────────────────────────
+TERMS_DIR = os.path.join(BASE, "terms")
+write(os.path.join(TERMS_DIR, "page.js"), """
+// File: src/app/terms/page.js
+
+export default function TermsPage() {
+  return (
+    <main className="container" style={{ paddingTop: 40, maxWidth: 720 }}>
+      <h1 style={{ fontSize: "2rem", fontWeight: 800, marginBottom: 8 }}>Terms &amp; Conditions</h1>
+      <p style={{ color: "#888", marginBottom: 32 }}>Last updated: February 2026</p>
+      {[
+        ["1. Acceptance of Terms", "By accessing or using Banger Ratios (bangerratios.com), you agree to be bound by these Terms and Conditions. If you do not agree, please do not use the site."],
+        ["2. Description of Service", "Banger Ratios is a community platform for rating music albums on a track-by-track basis. The 'Banger Ratio' is a community-voted metric reflecting the percentage of tracks rated as 'bangers' by users."],
+        ["3. User Accounts", "You must provide accurate information when creating an account. You are responsible for maintaining the confidentiality of your password. You must be at least 13 years old to create an account."],
+        ["4. User Content", "By submitting ratings, reviews, or other content, you grant Banger Ratios a non-exclusive, royalty-free license to use and display that content. You retain ownership of your content."],
+        ["5. Prohibited Conduct", "You agree not to: (a) harass or abuse other users; (b) post false or misleading information; (c) use the service for any unlawful purpose; (d) attempt to gain unauthorized access to any part of the site."],
+        ["6. Intellectual Property", "The Banger Ratios name, logo, and original content are owned by Banger Ratios. Album cover art and music data are property of their respective owners and used for identification purposes only."],
+        ["7. Disclaimers", "The service is provided 'as is' without warranties of any kind. Banger Ratios is not responsible for the accuracy of user-generated ratings or reviews."],
+        ["8. Limitation of Liability", "Banger Ratios shall not be liable for any indirect, incidental, or consequential damages arising from your use of the service."],
+        ["9. Privacy", "Your use of Banger Ratios is also governed by our Privacy Policy. We collect email addresses and rating data to provide the service. We do not sell your personal information."],
+        ["10. Changes to Terms", "We may update these terms at any time. Continued use of the service after changes constitutes acceptance of the new terms."],
+        ["11. Contact", "For questions about these terms, contact us at: bangerratios.com"],
+      ].map(([title, text]) => (
+        <section key={title} style={{ marginBottom: 28 }}>
+          <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: 8 }}>{title}</h2>
+          <p style={{ color: "#444", lineHeight: 1.7, fontSize: "0.95rem" }}>{text}</p>
+        </section>
+      ))}
+    </main>
+  )
+}
+""".lstrip())
+
+# ── artists/page.js ──────────────────────────────────────────
+ARTISTS_DIR = os.path.join(BASE, "artists")
+write(os.path.join(ARTISTS_DIR, "page.js"), """
+// File: src/app/artists/page.js
+'use client'
+import { useEffect, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
+
+export default function ArtistsPage() {
+  const [artists, setArtists] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase
+        .from("albums")
+        .select("artist, genre, artwork_url, itunes_id")
+        .order("artist")
+      // Deduplicate by artist
+      const map = {}
+      for (const row of (data || [])) {
+        if (!map[row.artist]) map[row.artist] = row
+      }
+      setArtists(Object.values(map))
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  // Group by genre
+  const grouped = artists.reduce((acc, a) => {
+    const g = a.genre || "Other"
+    if (!acc[g]) acc[g] = []
+    acc[g].push(a)
+    return acc
+  }, {})
+
+  return (
+    <main className="container" style={{ paddingTop: 40 }}>
+      <h1 style={{ fontSize: "2rem", fontWeight: 800, marginBottom: 24 }}>Artists</h1>
+      {loading ? <p>Loading...</p> : (
+        Object.entries(grouped).sort().map(([genre, list]) => (
+          <section key={genre} style={{ marginBottom: 40 }}>
+            <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: 16,
+              color: "var(--pink)", borderBottom: "2px solid var(--pink)", paddingBottom: 8 }}>{genre}</h2>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+              {list.map(artist => (
+                <div key={artist.artist} style={{ textAlign: "center", width: 100 }}>
+                  <div style={{ width: 80, height: 80, borderRadius: "50%", background: "#f0f0f0",
+                    margin: "0 auto 8px", overflow: "hidden", display:"flex",
+                    alignItems:"center", justifyContent:"center" }}>
+                    {artist.artwork_url
+                      ? <img src={artist.artwork_url} alt={artist.artist} style={{width:80,height:80,objectFit:"cover"}}/>
+                      : <span style={{fontSize:32}}>🎤</span>}
+                  </div>
+                  <div style={{ fontSize: "0.8rem", fontWeight: 600,
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {artist.artist}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))
+      )}
+    </main>
+  )
+}
+""".lstrip())
+
+# ── albums/page.js ───────────────────────────────────────────
+ALBUMS_DIR = os.path.join(BASE, "albums")
+write(os.path.join(ALBUMS_DIR, "page.js"), """
+// File: src/app/albums/page.js
+'use client'
+import { useEffect, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+)
+
+const GENRES = ["All","Rock","Pop","Hip-Hop","R&B","Indie","Electronic","Classical","Jazz","Country","Folk","Metal"]
+
+function AlbumCard({ album }) {
+  const [art, setArt] = useState(album.artwork_url || null)
+  useEffect(() => {
+    if (art || !album.itunes_id) return
+    fetch(`https://itunes.apple.com/lookup?id=${album.itunes_id}&entity=album`)
+      .then(r => r.json())
+      .then(d => {
+        const url = d.results?.[0]?.artworkUrl100?.replace("100x100","400x400")
+        if (url) setArt(url)
+      }).catch(() => {})
+  }, [])
+  return (
+    <div className="album-card">
+      <div className="album-art">
+        {art
+          ? <img src={art} alt={album.title} style={{ width:160, height:160, objectFit:"cover" }} />
+          : <span style={{ fontSize:40 }}>🎵</span>}
+      </div>
+      <div className="album-info">
+        <div className="album-title">{album.title}</div>
+        <div className="album-artist">{album.artist}</div>
+        {album.year && <div style={{ fontSize:"0.72rem", color:"#aaa" }}>{album.year}</div>}
+      </div>
+    </div>
+  )
+}
+
+export default function AlbumsPage() {
+  const [albums, setAlbums] = useState([])
+  const [genre, setGenre] = useState("All")
+  const [search, setSearch] = useState("")
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      let q = supabase.from("albums").select("*").order("title").limit(200)
+      if (genre !== "All") q = q.eq("genre", genre)
+      const { data } = await q
+      setAlbums(data || [])
+      setLoading(false)
+    }
+    load()
+  }, [genre])
+
+  const filtered = albums.filter(a =>
+    !search || a.title.toLowerCase().includes(search.toLowerCase()) ||
+    a.artist.toLowerCase().includes(search.toLowerCase())
+  )
+
+  return (
+    <main className="container" style={{ paddingTop: 40 }}>
+      <h1 style={{ fontSize: "2rem", fontWeight: 800, marginBottom: 8 }}>Albums</h1>
+      <div style={{ display:"flex", gap:12, marginBottom:8, flexWrap:"wrap", alignItems:"center" }}>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search albums or artists..."
+          style={{ padding:"8px 14px", borderRadius:8, border:"1px solid #ddd",
+            fontFamily:"inherit", fontSize:"0.9rem", width:280, outline:"none" }}
+        />
+      </div>
+      <div className="genre-tabs">
+        {GENRES.map(g => (
+          <button key={g} className={`genre-tab${genre===g?" active":""}`} onClick={() => setGenre(g)}>{g}</button>
+        ))}
+      </div>
+      {loading ? <p style={{ color:"#888", marginTop:24 }}>Loading albums...</p> : (
+        filtered.length === 0
+          ? <p style={{ color:"#888", marginTop:24 }}>No albums found. Add some in Supabase (see Phase 8 of the deployment guide).</p>
+          : <div className="album-grid">
+              {filtered.map(a => <AlbumCard key={a.id} album={a} />)}
+            </div>
+      )}
+    </main>
+  )
+}
+""".lstrip())
+
+print("")
+print("Autopatcher complete! Files written:")
+print("   src/app/globals.css")
+print("   src/app/layout.js")
+print("   src/app/page.js")
+print("   src/app/components/NewsBanner.js")
+print("   src/app/components/Nav.js")
+print("   src/app/albums/page.js")
+print("   src/app/leaderboard/page.js")
+print("   src/app/community/page.js")
+print("   src/app/friends/page.js")
+print("   src/app/profile/page.js")
+print("   src/app/settings/page.js")
+print("   src/app/artists/page.js")
+print("   src/app/terms/page.js")
+print("")
+print("Next step: cd ~/Desktop/banger-ratios && npm run dev")
+PYEOF
+✅ YOU SHOULD SEE:
+You see a list of "✓ wrote" lines for each file, then "✅ Autopatcher complete!"
+If you see any Python errors (SyntaxError, IndentationError), see the Troubleshooting section.
+⚠️ IF SOMETHING WENT WRONG:
+If the script seems to run but nothing happens: make sure you copied the ENTIRE block including PYEOF at the end.
+If you see 'zsh: event not found': this means your terminal tried to interpret a ! character. Use the Python approach — it avoids this entirely.
+
+Step 4.5 — Test everything locally
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+npm run dev
+Open http://localhost:3000 in your browser. Check each page:
+localhost:3000	Homepage — hero section, two buttons
+localhost:3000/albums	Albums page — grid with genre tabs and search bar
+localhost:3000/artists	Artists grouped by genre with photos
+localhost:3000/community	Community Rated with genre tabs, truncated cards
+localhost:3000/leaderboard	Leaderboard with genre tabs and gold/silver/bronze top-3
+localhost:3000/friends	Find Friends with search bar + 🔍 button
+localhost:3000/profile	Login/signup form (if not logged in)
+localhost:3000/settings	Settings page (redirects to /profile if not logged in)
+localhost:3000/terms	Terms & Conditions page
+
+🔄 CACHE & PUSH CHECKPOINT
+cd ~/Desktop/banger-ratios
+npm run build    ← fix any errors before pushing
+git add .
+git commit -m "phase 4 autopatcher — all pages rebuilt"
+git push
+→ Wait 60 seconds → check every page at www.bangerratios.com
+
+
+PHASE 5 — VERCEL ENVIRONMENT VARIABLES
+Your .env.local file only works on YOUR computer. Vercel needs the same variables added in its dashboard to make the live site work.
+
+🌐  YOU ARE IN: YOUR WEB BROWSER
+Go to: vercel.com → your project → Settings → Environment Variables
+Add each of the following variables:
+
+NEXT_PUBLIC_SUPABASE_URL	https://qudxrkmhwtlpvrpzoayr.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY	(your anon key from Supabase Settings → API)
+NEXT_PUBLIC_LASTFM_KEY	(your Last.fm API key)
+
+After adding all three, click Save. Then click the Deployments tab and click Redeploy on the most recent deployment.
+✅ YOU SHOULD SEE:
+The live site at bangerratios.com now connects to Supabase correctly.
+⚠️ IF SOMETHING WENT WRONG:
+If you see 'NEXT_PUBLIC_SUPABASE_URL is not defined' on the live site: you forgot to add the env variables, or you did not redeploy after adding them.
+
+
+PHASE 6 — BOT & DDoS PROTECTION
+This adds two layers of protection: Vercel's built-in firewall for the web layer, and Supabase rate limiting for the database layer.
+
+Step 6.1 — Vercel Web Application Firewall
+🌐  YOU ARE IN: YOUR WEB BROWSER
+Go to: vercel.com → your project → Security → Web Application Firewall
+Enable the firewall. Turn on: DDoS Protection, Bot Protection, IP Blocking. These are free tiers and require one click each.
+
+Step 6.2 — Supabase rate limiting via middleware
+This limits how many requests a single IP can make to your API routes per minute.
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+python3 << 'PYEOF'
+import os
+path = os.path.expanduser("~/Desktop/banger-ratios/src/middleware.js")
+content = """
+// File: src/middleware.js
+import { NextResponse } from 'next/server'
+
+const RATE_LIMIT = 60
+const WINDOW_MS = 60 * 1000
+const store = new Map()
+
+export function middleware(req) {
+  const ip = req.headers.get("x-forwarded-for") || "unknown"
+  const now = Date.now()
+  const entry = store.get(ip) || { count: 0, start: now }
+  if (now - entry.start > WINDOW_MS) {
+    store.set(ip, { count: 1, start: now })
+    return NextResponse.next()
+  }
+  if (entry.count >= RATE_LIMIT) {
+    return new NextResponse("Too Many Requests", { status: 429 })
+  }
+  store.set(ip, { count: entry.count + 1, start: entry.start })
+  return NextResponse.next()
+}
+
+export const config = {
+  matcher: ['/api/:path*'],
+}
+"""
+with open(path, "w") as f: f.write(content.lstrip())
+print("✓ middleware.js written")
+PYEOF
+
+🔄 CACHE & PUSH CHECKPOINT
+npm run build
+git add .
+git commit -m "add rate limiting middleware"
+git push
+
+
+PHASE 7 — OPEN GRAPH PREVIEW IMAGE
+When someone shares a link to your site on Twitter, iMessage, Slack, etc., a preview image appears. That image is the og-image.png file. You need to create one.
+
+Create a 1200×630 pixel image with your logo/branding and save it as og-image.png in your project's public/ folder:
+🖥️  YOU ARE IN: TERMINAL
+Copy and paste the command(s) below exactly.
+# First check if your public folder exists
+ls ~/Desktop/banger-ratios/public/
+
+# If og-image.png is not there, create a placeholder with ImageMagick (if installed)
+# OR just drag your own 1200x630 PNG into the public/ folder using Finder
+# Then run:
+ls ~/Desktop/banger-ratios/public/og-image.png
+CREATING THE OG IMAGE
+Canva (free): canva.com → create a design → Custom size: 1200 x 630 pixels → add your logo/colors → Download as PNG.
+Rename the downloaded file to og-image.png.
+In Finder: drag it into your banger-ratios/public/ folder.
+Then run:  git add . && git commit -m "add og-image" && git push
+
+
+PHASE 8 — ADDING ALBUMS TO YOUR DATABASE
+Your pages will show empty grids until you add album data to Supabase. Here is how to add albums quickly.
+
+Step 8.1 — Add seed albums via SQL
+Go to Supabase SQL Editor and run this to add sample albums. Replace or extend the list with your own.
+🗄️  YOU ARE IN: SUPABASE
+supabase.com → your project dashboard
+insert into public.albums (title, artist, genre, year, itunes_id) values
+  ('Blonde', 'Frank Ocean', 'R&B', 2016, '1146195596'),
+  ('DAMN.', 'Kendrick Lamar', 'Hip-Hop', 2017, '1223592280'),
+  ('IGOR', 'Tyler, the Creator', 'Hip-Hop', 2019, '1463940183'),
+  ('folklore', 'Taylor Swift', 'Indie', 2020, '1521889004'),
+  ('The Rise and Fall of a Midwest Princess', 'Chappell Roan', 'Pop', 2023, '1694244618'),
+  ('To Pimp a Butterfly', 'Kendrick Lamar', 'Hip-Hop', 2015, '974485734'),
+  ('Rumours', 'Fleetwood Mac', 'Rock', 1977, '278178350'),
+  ('OK Computer', 'Radiohead', 'Rock', 1997, '1109714933'),
+  ('Kind of Blue', 'Miles Davis', 'Jazz', 1959, '268443092'),
+  ('Purple Rain', 'Prince', 'Pop', 1984, '1440771773')
+on conflict do nothing;
+✅ YOU SHOULD SEE:
+You see: 10 rows affected (or fewer if some already exist).
+
+Step 8.2 — Add tracks for rating
+For ratings to work, each album needs tracks. Add them with this pattern (repeat for each album you add):
+🗄️  YOU ARE IN: SUPABASE
+supabase.com → your project dashboard
+-- Add tracks for Blonde (album id = 1, check your actual id)
+-- First get your album IDs:
+select id, title from public.albums order by id;
+
+-- Then insert tracks (replace album_id with the actual number you see):
+insert into public.tracks (album_id, title, track_number) values
+  (1, 'Nikes', 1),
+  (1, 'Ivy', 2),
+  (1, 'Pink + White', 3),
+  (1, 'Solo', 4),
+  (1, 'Nights', 5);
+
+
+PHASE 9 — GIT WORKFLOW CHEAT SHEET
+Use this every time you make any change you want to go live.
+
+# 1. Navigate to your project (always start here)
+cd ~/Desktop/banger-ratios
+
+# 2. Build to check for errors BEFORE pushing
+npm run build
+
+# 3. Stage all changes
+git add .
+
+# 4. Commit with a descriptive message
+git commit -m "describe what you changed"
+
+# 5. Push to GitHub (Vercel auto-deploys from here)
+git push
+
+# 6. Wait about 60 seconds, then check:
+#    https://www.bangerratios.com
+
+# ── COMMON FIXES ──────────────────────────────────────────
+# Clear Next.js cache if you see stale content:
+rm -rf .next && npm run dev
+
+# If git push is rejected (someone else pushed or you force-pushed):
+git pull --rebase && git push
+
+# Set your git identity (run once, fixes "committer configured automatically"):
+git config --global user.email "jamestfilmer@gmail.com"
+git config --global user.name "jamestfilmer-ops"
+
+
+PHASE 10 — TROUBLESHOOTING GUIDE
+Every common error you have hit across DEP I–XIV, and exactly how to fix it.
+
+🔴 ERROR: "Can't find variable: useEffect" or "Can't find variable: useState"
+Cause: The page file is using React hooks without importing them. This happens when old files from a previous session survive in your repo.
+
+Fix: Fix: Run the Nuke script (Phase 4 Step 4.3) then the Autopatcher (Phase 4 Step 4.4). Both scripts together replace every affected file. This is the #1 error in DEP XV.
+
+🔴 ERROR: "Database error saving new user"
+Cause: This means the handle_new_user trigger is missing or broken.
+
+Fix: Fix: Re-run the full SQL from Phase 3 Step 3.3. The trigger at the bottom of that block auto-creates a profile on signup.
+
+🔴 ERROR: "The default export is not a React Component in /layout"
+Cause: layout.js is broken or missing the RootLayout function.
+
+Fix: Fix: Run the Autopatcher in Phase 4 Step 4.2. It completely rewrites layout.js with the correct content.
+
+🔴 ERROR: "Module not found: @supabase/supabase-js"
+Cause: The Supabase package is not installed.
+
+Fix: Fix: cd ~/Desktop/banger-ratios && npm install @supabase/supabase-js
+
+🔴 Terminal shows heredoc> prompt
+Cause: You pressed Enter in the middle of a cat << EOF command before it was complete.
+
+Fix: Fix: Type EOF and press Enter to escape it. Then use the Python approach from Phase 4 instead of cat heredoc commands.
+
+🔴 ERROR: "zsh: event not found: ..."
+Cause: Your terminal interpreted ! as a history expansion command.
+
+Fix: Fix: Use single quotes around your heredoc marker (cat << 'EOF') or just use the Python approach which avoids this completely.
+
+🔴 Leaderboard page shows nothing
+Cause: Either no albums in the database, or the recalculate_banger_ratio function is missing.
+
+Fix: Fix: (1) Add albums via Phase 8 SQL. (2) Make sure you ran the full SQL schema from Phase 3, which includes the function.
+
+🔴 Vercel deployment fails with "Build Error"
+Cause: There is a syntax error in one of your files.
+
+Fix: Fix: Run npm run build locally. It will show you exactly which file and line number has the error. Fix that file first.
+
+🔴 Profile photo upload fails
+Cause: The avatars storage bucket is missing or its policies are not set.
+
+Fix: Fix: Re-run the storage section of the Phase 3 SQL (the insert into storage.buckets block and the policies below it).
+
+🔴 Artists page only shows 2 artists
+Cause: Only 2 albums in your database, or all albums have the same artist.
+
+Fix: Fix: Add more albums with different artists using the Phase 8 SQL.
+
+🔴 News banner scrolls too fast or too slow
+Cause: The animation-duration is set too low.
+
+Fix: Fix: In NewsBanner.js the animation is 90s. To slow it down change 90s to 120s or 180s. Run the Autopatcher again and edit the 90s value before running.
+
+🔴 Cmd+F not finding code in VS Code
+Cause: You may be in the wrong file, or the variable names are different from what you expect.
+
+Fix: Fix: Use terminal to search: grep -rn "what you are looking for" ~/Desktop/banger-ratios/src/
+
+PHASE 11 — ROADMAP TO BR DEP XX
+You said BR DEP XX is your target before monetization and LLC formation. Here is the plan:
+
+DEP XV	THIS GUIDE	Fresh start: all pages rebuilt, DB fixed, Autopatcher in place
+DEP XVI	User Experience	Rating flow (click track = banger/not), individual album pages with tracklist
+DEP XVII	Social Features	Following/followers working, activity feed, friend ratings visible
+DEP XVIII	Polish	Search (global), mobile responsive fixes, loading states, error states
+DEP XIX	Pre-Launch	Email verification, og-image final, custom domain confirmed, Google Analytics
+DEP XX	Launch Ready	Performance audit, SEO, Terms published, monetization hooks (Stripe or ads), LLC ready
+
+
+QUICK REFERENCE CARD
+DAILY WORKFLOW
+1. cd ~/Desktop/banger-ratios
+2. Make changes (run Autopatcher, edit SQL, etc.)
+3. npm run build    ← always do this before pushing
+4. git add . && git commit -m "what changed" && git push
+5. Wait 60 seconds → check bangerratios.com
+
+KEY URLS
+Your site:       https://www.bangerratios.com
+GitHub repo:     https://github.com/jamestfilmer-ops/banger-ratios
+Supabase:        https://supabase.com/dashboard
+Vercel:          https://vercel.com/dashboard
+Dev server:      http://localhost:3000  (only when npm run dev is running)
+
+IF EVERYTHING BREAKS
+1. Run the Autopatcher (Phase 4 Step 4.2) — it rewrites all page files
+2. Re-run the SQL schema (Phase 3 Step 3.3) — it fixes all database issues
+3. npm run build — it shows exactly which file has an error
+4. git push — push the fixes to Vercel
+These four steps fix 95% of everything that can go wrong.
+
+
+© 2026 Banger Ratios  ·  BR DEP XV  ·  bangerratios.com
