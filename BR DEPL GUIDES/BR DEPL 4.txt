@@ -1,0 +1,235 @@
+BANGER RATIOS
+Complete Deployment & Developer Guide
+v5.0 — February 2026
+www.bangerratios.com
+1. Project Overview
+Banger Ratios is a Next.js 16 web application deployed on Vercel, backed by a Supabase PostgreSQL database. Users search any album via the iTunes API, rate tracks 1–7, and the app computes a "Banger Ratio" — the percentage of tracks rated 5 or higher by the community.
+Tech Stack
+Layer	Technology
+Frontend	Next.js 16 (App Router), React 19, Space Grotesk font
+Styling	CSS custom properties + Tailwind v4 (utility classes)
+Database	Supabase (PostgreSQL) — albums, tracks, ratings, users
+Auth	Supabase Auth (email/password)
+Music Data	iTunes Search API (free, no key required)
+News Feed	Pitchfork RSS via rss2json.com proxy
+Hosting	Vercel (auto-deploy from GitHub)
+Domain	www.bangerratios.com via Vercel DNS
+2. Project Folder Structure
+All application code lives inside the src/ directory. Here is what each file does:
+File Path	Purpose
+src/app/layout.js	Root layout — wraps all pages. Contains NewsBanner + Nav.
+src/app/globals.css	All global CSS including design tokens, news ticker animation, nav, buttons, cards.
+src/app/page.js	Homepage with hero text, CTA buttons, and animated stat counters.
+src/app/components/Nav.js	Sticky navigation. Shows SIGN IN or PROFILE/SIGN OUT based on auth state.
+src/app/components/NewsBanner.js	Scrolling news ticker. Fetches Pitchfork RSS. Falls back to curated headlines.
+src/app/components/Counter.js	Animated number counter for homepage stats.
+src/app/albums/page.js	Browse page. iTunes search dropdown + community-rated albums grid.
+src/app/album/[id]/page.js	Individual album rating page. Loads from iTunes API, saves to Supabase.
+src/app/artists/page.js	Artists directory. Seeded with top artists. Links to their albums.
+src/app/leaderboards/page.js	Ranked albums by Banger Ratio. Podium view for top 3.
+src/app/releases/page.js	New releases from iTunes RSS. Filter by genre. Click to rate.
+src/app/profile/page.js	User profile. Shows rating stats and history. Redirects if not logged in.
+src/app/auth/page.js	Sign in / Sign up form using Supabase Auth.
+src/app/merch/page.js	Merch store preview with email waitlist capture.
+src/app/about/page.js	Explains the Banger Ratio concept and rating scale.
+src/lib/supabase.js	Supabase client. Reads env vars NEXT_PUBLIC_SUPABASE_URL and KEY.
+.env.local	Your Supabase credentials. NEVER commit this to GitHub.
+next.config.mjs	Next.js config. Allows iTunes image domains (mzstatic.com).
+3. Supabase Database Setup
+Your Supabase project URL is: https://vqtftxerpwpixhmpowvx.supabase.co
+Log in at supabase.com → your project → SQL Editor to run these setup queries.
+Required Tables
+albums
+create table albums (
+  id              bigint generated always as identity primary key,
+  itunes_collection_id bigint unique,
+  name            text,
+  artist_name     text,
+  artwork_url     text,
+  release_date    date,
+  genre           text,
+  track_count     int,
+  banger_ratio    numeric(5,2),
+  total_ratings   int default 0,
+  created_at      timestamptz default now(),
+  updated_at      timestamptz default now()
+);
+tracks
+create table tracks (
+  id               bigint generated always as identity primary key,
+  album_id         bigint references albums(id) on delete cascade,
+  itunes_track_id  bigint unique,
+  name             text,
+  track_number     int,
+  duration_ms      int,
+  preview_url      text,
+  avg_rating       numeric(4,2),
+  total_ratings    int default 0,
+  is_banger        boolean default false
+);
+ratings
+create table ratings (
+  id         bigint generated always as identity primary key,
+  user_id    uuid references auth.users(id) on delete cascade,
+  album_id   bigint references albums(id) on delete cascade,
+  track_id   bigint references tracks(id) on delete cascade,
+  score      int check (score between 1 and 7),
+  created_at timestamptz default now(),
+  unique (user_id, track_id)
+);
+Stored Procedure — Recalculate Banger Ratio
+This function is called every time a user submits ratings. It updates track stats and recalculates the album's Banger Ratio:
+create or replace function recalculate_banger_ratio(p_album_id bigint)
+returns void language plpgsql as $$
+begin
+  -- Update each track's avg rating and banger status
+  update tracks t set
+    avg_rating = (select avg(score)::numeric(4,2) from ratings r where r.track_id = t.id),
+    total_ratings = (select count(*) from ratings r where r.track_id = t.id),
+    is_banger = (select avg(score) >= 5 from ratings r where r.track_id = t.id)
+  where t.album_id = p_album_id;
+
+  -- Update album banger_ratio and total_ratings
+  update albums set
+    banger_ratio = (
+      select round(
+        100.0 * count(*) filter (where is_banger) / nullif(count(*), 0),
+      2) from tracks where album_id = p_album_id
+    ),
+    total_ratings = (select count(*) from ratings where album_id = p_album_id),
+    updated_at = now()
+  where id = p_album_id;
+end;
+$$;
+Row Level Security (RLS)
+Enable RLS so users can only write their own ratings:
+alter table albums enable row level security;
+alter table tracks enable row level security;
+alter table ratings enable row level security;
+
+-- Allow anyone to read albums and tracks
+create policy "public read albums" on albums for select using (true);
+create policy "public read tracks" on tracks for select using (true);
+create policy "public read ratings" on ratings for select using (true);
+
+-- Allow authenticated upserts
+create policy "auth upsert albums" on albums for all
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "auth upsert tracks" on tracks for all
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "own ratings" on ratings for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+4. Environment Variables
+These live in .env.local locally and in Vercel > Settings > Environment Variables for production.
+IMPORTANT: Never commit .env.local to GitHub. It is in .gitignore by default.
+Variable	Where to find it
+NEXT_PUBLIC_SUPABASE_URL	Supabase Dashboard > Project Settings > API > Project URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY	Supabase Dashboard > Project Settings > API > anon/public key
+5. How to Edit Files & Deploy
+Option A — Edit via GitHub (recommended for most changes)
+1. Go to github.com and find your banger-ratios repository.
+2. Navigate to the file you want to edit (e.g. src/app/artists/page.js).
+3. Click the pencil icon (Edit this file) in the top right.
+4. Make your changes.
+5. Scroll down to "Commit changes" → write a short message → click "Commit changes".
+6. Vercel automatically detects the push and redeploys in ~60 seconds.
+7. Visit www.bangerratios.com to see your live changes.
+Option B — Edit via Terminal (for larger changes)
+Open your terminal and navigate to the project:
+cd ~/Desktop/banger-ratios
+Start the local dev server:
+npm run dev
+Open http://localhost:3000 to preview changes. Edit files in your code editor (VS Code recommended). When ready to deploy:
+git add .
+git commit -m "describe what you changed"
+git push
+Vercel auto-deploys. Done.
+Option C — Edit directly in Vercel (quick text changes only)
+Vercel has a built-in editor for small text changes. Go to vercel.com → your project → Files tab. This is good for quick copy tweaks but not recommended for code changes.
+6. How to Customize Each Page
+Homepage (src/app/page.js)
+Edit the hero headline, subtext, or stat numbers directly in the JSX. The Counter component animates from 0 to whatever value you give it.
+To update the stats (Albums Rated, Track Ratings, Active Raters), edit the value={} prop on each Counter component.
+Artists Page (src/app/artists/page.js)
+The FEATURED_ARTISTS array at the top of the file contains all artist cards. Each artist has:
+•	name — Display name
+•	genre — Shows under the name
+•	ratio — Their Banger Ratio (your editorial call until real data fills in)
+•	albums — Number of albums
+•	id — iTunes Artist ID (find it by searching artist on iTunes and looking at the URL)
+To add an artist, copy one object in the array and fill in the values. To remove one, delete its object.
+Albums Page (src/app/albums/page.js)
+The SEED_ALBUMS array shows albums as placeholder cards before any community ratings exist. Each has an itunes_id — get this from the iTunes album URL. Once users rate albums, they appear from Supabase automatically.
+Releases Page (src/app/releases/page.js)
+Fetches the iTunes Top Albums RSS feed live — no editing needed. Genre filter buttons use iTunes genre IDs. To add a genre, add it to the GENRE_IDS object at the top with the correct iTunes ID number.
+News Banner (src/app/components/NewsBanner.js)
+Tries to fetch Pitchfork RSS news via rss2json.com. If that fails, shows the FALLBACK_HEADLINES array. Edit those strings to control what shows when RSS is unavailable. Ticker speed is controlled by animation: ticker 60s — change 60s to make it faster or slower.
+Merch Page (src/app/merch/page.js)
+Edit the MERCH array to add, remove, or update products. Each item has name, price, img (emoji), desc, and tag (e.g. "BESTSELLER", "NEW", "COMING SOON"). To connect the email capture to a real service (Mailchimp, ConvertKit), update the Notify Me button onClick handler.
+Leaderboard (src/app/leaderboards/page.js)
+Fully data-driven — pulls from Supabase automatically. No editing needed. The "This Week" tab filters by albums updated in the last 7 days.
+Profile Page (src/app/profile/page.js)
+Requires the user to be logged in. Fetches their rating count and recent ratings from Supabase. The profile page redirects to /auth if the user is not signed in.
+7. Connecting a Real Music News API
+Current Setup — Pitchfork RSS (Free)
+The NewsBanner component fetches Pitchfork news via rss2json.com, a free RSS-to-JSON converter. This requires no API key and works immediately. Rate limit is generous for a small site.
+Upgrade Option — Spotify or Apple Music API
+For richer news (new release announcements, trending artists), you can call the Spotify API:
+•	Go to developer.spotify.com and create an app
+•	Add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to Vercel env vars
+•	Use the /v1/browse/new-releases endpoint in a Next.js API route
+•	Call that API route from NewsBanner.js instead of the RSS feed
+The iTunes RSS feed in Releases page (releases/page.js) is completely free, requires no key, and returns real-time Apple Music charts. It is already live.
+8. Vercel Deployment Reference
+Dashboard Links
+•	Project Dashboard: vercel.com/dashboard
+•	Environment Variables: Project > Settings > Environment Variables
+•	Domains: Project > Settings > Domains
+•	Deploy Logs: Project > Deployments > click any deploy > View Function Logs
+•	Preview Deployments: Every push to a non-main branch creates a preview URL
+Environment Variables in Vercel
+Go to: Vercel > Project > Settings > Environment Variables
+Add both variables for Production, Preview, and Development environments:
+•	NEXT_PUBLIC_SUPABASE_URL
+•	NEXT_PUBLIC_SUPABASE_ANON_KEY
+After adding env vars, you must trigger a redeploy. Go to Deployments tab → three dots next to latest → Redeploy.
+Custom Domain Setup
+Your domain www.bangerratios.com is already connected. If you ever need to reconnect:
+•	Vercel > Project > Settings > Domains > Add domain
+•	Copy the CNAME record Vercel gives you
+•	Add it in your domain registrar's DNS settings
+•	Wait up to 24 hours for DNS propagation
+9. What Changed vs. Original Build
+After switching to ChatGPT mid-build, several pages were stripped down to empty shells. Here is what was removed and has now been restored:
+Page / Feature	What Was Fixed
+Artists page	Was empty — now has full artist directory with Banger Ratios and genre filter
+Releases page	Was placeholder — now live iTunes RSS with genre tabs
+Profile page	Was static dummy — now reads real Supabase auth + rating history
+News banner	Was static one-liner — now scrolling ticker with real Pitchfork RSS
+Nav	Didn't show profile or sign out — now auth-aware with Sign In pill button
+Albums page	Had no seed data — now shows curated albums + iTunes live search dropdown
+Leaderboard	Worked but had no fallback — now has podium view + empty state CTA
+globals.css	Had massive duplicated CSS blocks — cleaned up and ticker animation added
+next.config.mjs	Used deprecated images.domains — updated to remotePatterns
+About page	Was sparse — now has feature grid + full rating scale explanation
+10. Quick Reference Cheat Sheet
+Common Terminal Commands
+Command	What it does
+cd ~/Desktop/banger-ratios	Navigate to the project folder
+npm run dev	Start local dev server at localhost:3000
+git status	See what files have changed
+git add .	Stage all changes
+git commit -m "msg"	Save changes with a description
+git push	Push to GitHub, triggers Vercel deploy
+git pull	Pull latest changes from GitHub
+File to Edit for Common Tasks
+Task	File to edit
+Change site colors	src/app/globals.css — edit :root variables
+Add nav link	src/app/components/Nav.js — add navItem() call
+Change homepage text	src/app/page.js
+Add a merch item	src/app/merch/page.js — add to MERCH array
+Add an artist	src/app/artists/page.js — add to FEATURED_ARTISTS array
+Change news headlines	src/app/components/NewsBanner.js — edit FALLBACK_HEADLINES
+Change ticker speed	src/app/globals.css — find animation: ticker 60s and adjust
+Update Supabase keys	Vercel env vars + .env.local
+BANGER RATIOS — Built with Claude by Anthropic
