@@ -25,13 +25,28 @@ export default function ArtistsPage() {
         map[a.artist_name].count++
       })
 
-      const ranked = Object.entries(map)
-        .map(([name, stats]) => ({
-          name,
-          avgRatio: (stats.total / stats.count).toFixed(1),
-          albumCount: stats.count
-        }))
-        .sort((a, b) => parseFloat(b.avgRatio) - parseFloat(a.avgRatio))
+      const ranked = await Promise.all(
+        Object.entries(map)
+          .map(([name, stats]) => ({
+            name,
+            avgRatio: (stats.total / stats.count).toFixed(1),
+            albumCount: stats.count
+          }))
+          .sort((a, b) => parseFloat(b.avgRatio) - parseFloat(a.avgRatio))
+          .map(async (artist) => {
+            // Fetch artist image from Last.fm
+            try {
+              const imgRes = await fetch(
+                `https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=${encodeURIComponent(artist.name)}&api_key=${process.env.NEXT_PUBLIC_LASTFM_KEY}&format=json`
+              )
+              const imgData = await imgRes.json()
+              const img = imgData?.artist?.image?.find(i => i.size === 'extralarge')?.['#text']
+              return { ...artist, photo: img || null }
+            } catch {
+              return { ...artist, photo: null }
+            }
+          })
+      )
 
       setArtists(ranked)
       setLoading(false)
@@ -62,6 +77,19 @@ export default function ArtistsPage() {
             <span style={{ fontSize: 14, fontWeight: 700, color: i < 3 ? 'var(--pink)' : 'var(--gray-200)', width: 26, textAlign: 'center' }}>
               {i + 1}
             </span>
+            {a.photo ? (
+              <img
+                src={a.photo}
+                alt={a.name}
+                style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+              />
+            ) : (
+              <div style={{
+                width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                background: 'var(--gray-200)', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', fontSize: 18
+              }}>🎤</div>
+            )}
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: 14, fontWeight: 600 }}>{a.name}</p>
               <p style={{ fontSize: 11, color: 'var(--gray-400)' }}>{a.albumCount} album{a.albumCount !== 1 ? 's' : ''}</p>

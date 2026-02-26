@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 
 const tabs = [
   { href: '/',             label: 'Home' },
+  { href: '/artists',      label: 'Artists' },
   { href: '/leaderboards', label: 'Leaderboards' },
   { href: '/releases',     label: 'New Releases' },
   { href: '/friends',      label: 'Friends' },

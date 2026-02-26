@@ -1,7 +1,14 @@
+// ============================================================
+// FILE: src/app/layout.js
+// WHAT: Root layout — adds ToastProvider so all pages can use toasts
+// HOW: Cmd+A → Delete → Paste → Save → git add/commit/push
+// ============================================================
+
 import './globals.css'
 import Nav from './components/Nav'
 import NewsBanner from './components/NewsBanner'
 import Footer from './components/Footer'
+import { ToastProvider } from './components/Toast'
 
 export const metadata = {
   title: 'Banger Ratios — The Real Measure of Musical Consistency',
@@ -28,10 +35,12 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body>
-        <NewsBanner />
-        <Nav />
-        {children}
-        <Footer />
+        <ToastProvider>
+          <NewsBanner />
+          <Nav />
+          {children}
+          <Footer />
+        </ToastProvider>
       </body>
     </html>
   )

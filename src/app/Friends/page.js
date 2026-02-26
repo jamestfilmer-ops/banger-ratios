@@ -1,265 +1,355 @@
+// FILE: src/app/Friends/page.js
+// Cmd+A → Delete → Paste
+
 'use client'
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '../components/Toast'
 
 export default function FriendsPage() {
-  const [user, setUser] = useState(null)
-  const [search, setSearch] = useState('')
+  const [user, setUser]             = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
-  const [following, setFollowing] = useState([])
-  const [followers, setFollowers] = useState([])
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [tab, setTab] = useState('following') // 'following' | 'followers' | 'find'
+  const [following, setFollowing]   = useState([]) // profiles I follow
+  const [followers, setFollowers]   = useState([]) // profiles who follow me
+  const [compatibility, setCompatibility] = useState({}) // userId → score
+  const [loading, setLoading]       = useState(true)
+  const [searching, setSearching]   = useState(false)
+  const [followLoading, setFollowLoading] = useState({})
+  const toast = useToast()
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data?.user) {
-        setUser(data.user)
-        loadFollowing(data.user.id)
-        loadFollowers(data.user.id)
-      }
-    })
+    init()
   }, [])
+
+  async function init() {
+    const { data: { user: u } } = await supabase.auth.getUser()
+    if (!u) { setLoading(false); return }
+    setUser(u)
+    await Promise.all([loadFollowing(u.id), loadFollowers(u.id)])
+    setLoading(false)
+  }
 
   async function loadFollowing(userId) {
     const { data } = await supabase
       .from('follows')
-      .select('following_id, profiles!follows_following_id_fkey(id, username, avatar_url, bio)')
+      .select('following_id, profiles!follows_following_id_fkey(id, username, display_name, avatar_url, bio)')
       .eq('follower_id', userId)
-    setFollowing(data?.map(d => d.profiles).filter(Boolean) || [])
+
+    const profiles = (data || []).map(r => r.profiles).filter(Boolean)
+    setFollowing(profiles)
+
+    // Load compatibility scores for each followed user
+    profiles.forEach(p => loadCompatibility(userId, p.id))
   }
 
   async function loadFollowers(userId) {
     const { data } = await supabase
       .from('follows')
-      .select('follower_id, profiles!follows_follower_id_fkey(id, username, avatar_url, bio)')
+      .select('follower_id, profiles!follows_follower_id_fkey(id, username, display_name, avatar_url, bio)')
       .eq('following_id', userId)
-    setFollowers(data?.map(d => d.profiles).filter(Boolean) || [])
+
+    setFollowers((data || []).map(r => r.profiles).filter(Boolean))
+  }
+
+  async function loadCompatibility(myId, theirId) {
+    // Get my ratings
+    const { data: myRatings } = await supabase
+      .from('ratings')
+      .select('track_id, score')
+      .eq('user_id', myId)
+
+    // Get their ratings
+    const { data: theirRatings } = await supabase
+      .from('ratings')
+      .select('track_id, score')
+      .eq('user_id', theirId)
+
+    if (!myRatings?.length || !theirRatings?.length) {
+      setCompatibility(prev => ({ ...prev, [theirId]: null }))
+      return
+    }
+
+    const myMap = {}
+    myRatings.forEach(r => myMap[r.track_id] = r.score)
+
+    const theirMap = {}
+    theirRatings.forEach(r => theirMap[r.track_id] = r.score)
+
+    // Find shared track IDs
+    const sharedIds = Object.keys(myMap).filter(id => theirMap[id])
+    if (sharedIds.length < 3) {
+      setCompatibility(prev => ({ ...prev, [theirId]: null }))
+      return
+    }
+
+    // Algorithm: agreement per track = 1 - (|diff| / 6)
+    const agreements = sharedIds.map(id => 1 - Math.abs(myMap[id] - theirMap[id]) / 6)
+    const score = Math.round((agreements.reduce((a, b) => a + b, 0) / agreements.length) * 100)
+
+    setCompatibility(prev => ({ ...prev, [theirId]: score }))
   }
 
   async function searchUsers(e) {
     e.preventDefault()
-    if (!search.trim()) return
-    setSearchLoading(true)
+    if (!searchQuery.trim()) return
+    setSearching(true)
     setSearchResults([])
-    const { data } = await supabase
+
+    const { data, error } = await supabase
       .from('profiles')
-      .select('id, username, avatar_url, bio')
-      .ilike('username', `%${search.trim()}%`)
+      .select('id, username, display_name, avatar_url, bio')
+      .or(`username.ilike.%${searchQuery}%,display_name.ilike.%${searchQuery}%`)
       .neq('id', user?.id || '')
-      .limit(20)
-    setSearchResults(data || [])
-    setSearchLoading(false)
+      .limit(10)
+
+    if (error) {
+      toast('Search failed. Try again.', 'error')
+    } else {
+      setSearchResults(data || [])
+      if (!data?.length) toast('No users found.', 'info')
+    }
+    setSearching(false)
   }
 
   async function follow(profileId) {
-    if (!user) { window.location.href = '/auth'; return }
-    await supabase.from('follows').insert({ follower_id: user.id, following_id: profileId })
-    loadFollowing(user.id)
-    // Update search results to reflect new follow state
-    setSearchResults(prev => prev.map(p => p.id === profileId ? { ...p, isFollowing: true } : p))
+    if (!user) { toast('Sign in to follow people.', 'info'); return }
+    setFollowLoading(prev => ({ ...prev, [profileId]: true }))
+
+    const { error } = await supabase
+      .from('follows')
+      .insert({ follower_id: user.id, following_id: profileId })
+
+    if (error) {
+      toast('Failed to follow. Try again.', 'error')
+    } else {
+      toast('Following!', 'success')
+      await loadFollowing(user.id)
+    }
+    setFollowLoading(prev => ({ ...prev, [profileId]: false }))
   }
 
   async function unfollow(profileId) {
-    await supabase.from('follows').delete()
+    if (!user) return
+    setFollowLoading(prev => ({ ...prev, [profileId]: true }))
+
+    const { error } = await supabase
+      .from('follows')
+      .delete()
       .eq('follower_id', user.id)
       .eq('following_id', profileId)
-    loadFollowing(user.id)
-    setSearchResults(prev => prev.map(p => p.id === profileId ? { ...p, isFollowing: false } : p))
+
+    if (error) {
+      toast('Failed to unfollow.', 'error')
+    } else {
+      toast('Unfollowed.', 'info')
+      await loadFollowing(user.id)
+    }
+    setFollowLoading(prev => ({ ...prev, [profileId]: false }))
   }
 
-  function isFollowing(profileId) {
-    return following.some(f => f.id === profileId)
+  const followingIds = new Set(following.map(p => p.id))
+
+  function compatColor(score) {
+    if (score >= 80) return '#16a34a'
+    if (score >= 60) return '#FF0066'
+    return '#6B7280'
   }
 
-  function getInitials(username) {
-    return (username || '?').slice(0, 2).toUpperCase()
-  }
-
-  function Avatar({ profile, size = 44 }) {
-    return profile?.avatar_url ? (
-      <img src={profile.avatar_url} alt=""
-        style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-    ) : (
-      <div style={{
-        width: size, height: size, borderRadius: '50%', flexShrink: 0,
-        background: 'var(--pink)', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', fontWeight: 700, fontSize: size * 0.35,
-        color: 'white', letterSpacing: 0.5,
-      }}>
-        {getInitials(profile?.username)}
-      </div>
-    )
-  }
-
-  function UserCard({ profile, showUnfollow = false }) {
-    const alreadyFollowing = isFollowing(profile.id)
+  if (loading) {
     return (
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '12px 14px', borderRadius: 10,
-        border: '1px solid var(--gray-200)',
-        background: 'white', marginBottom: 8,
-      }}>
-        <Avatar profile={profile} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--black)' }}>
-            @{profile.username}
-          </p>
-          {profile.bio && (
-            <p style={{ fontSize: 12, color: 'var(--gray-400)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {profile.bio}
-            </p>
-          )}
-        </div>
-        {user && (
-          alreadyFollowing || (showUnfollow && isFollowing(profile.id)) ? (
-            <button onClick={() => unfollow(profile.id)} style={{
-              padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-              background: 'var(--gray-100)', border: '1px solid var(--gray-200)',
-              color: 'var(--gray-600)', cursor: 'pointer', flexShrink: 0,
-            }}>Following</button>
-          ) : (
-            <button onClick={() => follow(profile.id)} style={{
-              padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-              background: 'var(--pink)', border: 'none',
-              color: 'white', cursor: 'pointer', flexShrink: 0,
-            }}>Follow</button>
-          )
-        )}
+      <div style={{ maxWidth: 700, margin: '60px auto', padding: '0 24px', textAlign: 'center' }}>
+        <p style={{ color: 'var(--gray-text)' }}>Loading...</p>
       </div>
     )
   }
 
   if (!user) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <p style={{ fontSize: 40, marginBottom: 12 }}>👥</p>
-          <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Sign in to see your friends</h2>
-          <p style={{ color: 'var(--gray-400)', fontSize: 14, marginBottom: 24 }}>
-            Follow people and see what they're rating.
-          </p>
-          <a href="/auth" style={{
-            display: 'inline-block', padding: '10px 28px', borderRadius: 10,
-            background: 'var(--pink)', color: 'white', fontWeight: 600, fontSize: 14,
-          }}>Sign In</a>
-        </div>
+      <div style={{ maxWidth: 700, margin: '60px auto', padding: '0 24px', textAlign: 'center' }}>
+        <p style={{ fontSize: 40, marginBottom: 16 }}>👥</p>
+        <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 10 }}>Find Your People</h1>
+        <p style={{ color: 'var(--gray-text)', marginBottom: 24 }}>Sign in to follow people and see their ratings.</p>
+        <a href="/auth" style={{
+          display: 'inline-block', padding: '12px 28px', background: 'var(--pink)',
+          color: 'white', borderRadius: 10, fontWeight: 600,
+        }}>Sign In</a>
       </div>
     )
   }
 
   return (
-    <div style={{ minHeight: '100vh' }}>
-      <main style={{ maxWidth: 640, margin: '0 auto', padding: '40px 24px 80px' }}>
+    <div style={{ maxWidth: 700, margin: '0 auto', padding: '40px 24px 80px' }}>
+      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 6 }}>👥 Friends</h1>
+      <p style={{ color: 'var(--gray-text)', fontSize: 14, marginBottom: 32 }}>
+        Follow people to see their ratings. Music is better with people.
+      </p>
 
-        <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 6 }}>Friends</h1>
-        <p style={{ color: 'var(--gray-400)', fontSize: 14, marginBottom: 28 }}>
-          Follow people to see what they're rating.
-        </p>
+      {/* Search */}
+      <form onSubmit={searchUsers} style={{ display: 'flex', gap: 10, marginBottom: 32 }}>
+        <input
+          type="text"
+          placeholder="Search by username or name..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          style={{
+            flex: 1, padding: '11px 16px', borderRadius: 10,
+            border: '1.5px solid var(--border)', fontSize: 14, outline: 'none',
+            fontFamily: 'inherit',
+          }}
+          onFocus={e => e.target.style.borderColor = 'var(--pink)'}
+          onBlur={e => e.target.style.borderColor = 'var(--border)'}
+        />
+        <button type="submit" style={{
+          padding: '11px 20px', background: 'var(--pink)', border: 'none',
+          color: 'white', borderRadius: 10, fontWeight: 600, cursor: 'pointer',
+          fontSize: 14, fontFamily: 'inherit',
+        }}>
+          {searching ? '...' : 'Search'}
+        </button>
+      </form>
 
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 28, borderBottom: '1px solid var(--gray-200)', paddingBottom: 0 }}>
-          {[
-            { key: 'following', label: `Following (${following.length})` },
-            { key: 'followers', label: `Followers (${followers.length})` },
-            { key: 'find',      label: 'Find People' },
-          ].map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)} style={{
-              padding: '8px 16px', borderRadius: '8px 8px 0 0', fontSize: 13, fontWeight: tab === t.key ? 600 : 400,
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: tab === t.key ? 'var(--pink)' : 'var(--gray-600)',
-              borderBottom: tab === t.key ? '2px solid var(--pink)' : '2px solid transparent',
-              marginBottom: -1,
-            }}>{t.label}</button>
-          ))}
-        </div>
-
-        {/* Following tab */}
-        {tab === 'following' && (
-          <div>
-            {following.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px 0' }}>
-                <p style={{ fontSize: 36, marginBottom: 12 }}>🎵</p>
-                <p style={{ fontWeight: 600, marginBottom: 6 }}>You're not following anyone yet</p>
-                <p style={{ color: 'var(--gray-400)', fontSize: 13, marginBottom: 20 }}>
-                  Find people with great taste and follow them.
-                </p>
-                <button onClick={() => setTab('find')} style={{
-                  padding: '9px 22px', borderRadius: 10, background: 'var(--pink)',
-                  border: 'none', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer',
-                }}>Find People</button>
-              </div>
-            ) : (
-              following.map(p => <UserCard key={p.id} profile={p} showUnfollow />)
-            )}
-          </div>
-        )}
-
-        {/* Followers tab */}
-        {tab === 'followers' && (
-          <div>
-            {followers.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px 0' }}>
-                <p style={{ fontSize: 36, marginBottom: 12 }}>👤</p>
-                <p style={{ fontWeight: 600, marginBottom: 6 }}>No followers yet</p>
-                <p style={{ color: 'var(--gray-400)', fontSize: 13 }}>
-                  Share your profile to get people following you.
-                </p>
-              </div>
-            ) : (
-              followers.map(p => <UserCard key={p.id} profile={p} />)
-            )}
-          </div>
-        )}
-
-        {/* Find People tab */}
-        {tab === 'find' && (
-          <div>
-            <form onSubmit={searchUsers} style={{
-              display: 'flex', gap: 8, marginBottom: 20,
-            }}>
-              <input
-                type="text"
-                placeholder="Search by username..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                style={{
-                  flex: 1, padding: '11px 16px', borderRadius: 10,
-                  border: '1px solid var(--gray-200)', fontSize: 14,
-                  outline: 'none', color: 'var(--black)',
-                }}
+      {/* Search Results */}
+      {searchResults.length > 0 && (
+        <section style={{ marginBottom: 40 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: 'var(--gray-text)' }}>SEARCH RESULTS</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {searchResults.map(p => (
+              <UserCard
+                key={p.id}
+                profile={p}
+                isFollowing={followingIds.has(p.id)}
+                onFollow={() => follow(p.id)}
+                onUnfollow={() => unfollow(p.id)}
+                loading={followLoading[p.id]}
+                compatibility={compatibility[p.id]}
+                compatColor={compatColor}
               />
-              <button type="submit" style={{
-                padding: '11px 20px', borderRadius: 10, background: 'var(--pink)',
-                border: 'none', color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer',
-              }}>
-                {searchLoading ? '...' : 'Search'}
-              </button>
-            </form>
+            ))}
+          </div>
+        </section>
+      )}
 
-            {searchResults.length > 0 && (
-              <div>
-                {searchResults.map(p => <UserCard key={p.id} profile={p} />)}
-              </div>
-            )}
-
-            {searchResults.length === 0 && search && !searchLoading && (
-              <p style={{ color: 'var(--gray-400)', textAlign: 'center', padding: '40px 0', fontSize: 14 }}>
-                No users found for "{search}"
-              </p>
-            )}
-
-            {!search && (
-              <p style={{ color: 'var(--gray-400)', textAlign: 'center', padding: '40px 0', fontSize: 14 }}>
-                Search for a username to find people to follow.
-              </p>
-            )}
+      {/* Following */}
+      <section style={{ marginBottom: 40 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: 'var(--gray-text)' }}>
+          FOLLOWING ({following.length})
+        </h2>
+        {following.length === 0 ? (
+          <div style={{
+            background: 'white', borderRadius: 12, border: '1px solid var(--border)',
+            padding: '40px 24px', textAlign: 'center',
+          }}>
+            <p style={{ fontSize: 32, marginBottom: 10 }}>🔍</p>
+            <p style={{ fontWeight: 600, marginBottom: 6 }}>Nobody yet</p>
+            <p style={{ color: 'var(--gray-text)', fontSize: 14 }}>Search for people above to follow them.</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {following.map(p => (
+              <UserCard
+                key={p.id}
+                profile={p}
+                isFollowing={true}
+                onFollow={() => follow(p.id)}
+                onUnfollow={() => unfollow(p.id)}
+                loading={followLoading[p.id]}
+                compatibility={compatibility[p.id]}
+                compatColor={compatColor}
+              />
+            ))}
           </div>
         )}
+      </section>
 
-      </main>
+      {/* Followers */}
+      <section>
+        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: 'var(--gray-text)' }}>
+          FOLLOWERS ({followers.length})
+        </h2>
+        {followers.length === 0 ? (
+          <div style={{
+            background: 'white', borderRadius: 12, border: '1px solid var(--border)',
+            padding: '40px 24px', textAlign: 'center',
+          }}>
+            <p style={{ color: 'var(--gray-text)', fontSize: 14 }}>No followers yet. Share your profile to get some!</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {followers.map(p => (
+              <UserCard
+                key={p.id}
+                profile={p}
+                isFollowing={followingIds.has(p.id)}
+                onFollow={() => follow(p.id)}
+                onUnfollow={() => unfollow(p.id)}
+                loading={followLoading[p.id]}
+                compatibility={compatibility[p.id]}
+                compatColor={compatColor}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function UserCard({ profile, isFollowing, onFollow, onUnfollow, loading, compatibility, compatColor }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 14,
+      background: 'white', borderRadius: 12, border: '1px solid var(--border)',
+      padding: '14px 16px',
+    }}>
+      {/* Avatar */}
+      <a href={`/profile/${profile.username}`}>
+        <div style={{
+          width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+          background: profile.avatar_url ? `url(${profile.avatar_url}) center/cover` : 'var(--pink)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'white', fontWeight: 700, fontSize: 16,
+        }}>
+          {!profile.avatar_url && (profile.username?.[0] || '?').toUpperCase()}
+        </div>
+      </a>
+
+      {/* Info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <a href={`/profile/${profile.username}`} style={{ fontWeight: 600, fontSize: 15 }}>
+          {profile.display_name || profile.username}
+        </a>
+        <p style={{ fontSize: 12, color: 'var(--gray-text)' }}>@{profile.username}</p>
+        {profile.bio && (
+          <p style={{ fontSize: 12, color: 'var(--gray-text)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {profile.bio}
+          </p>
+        )}
+        {/* Taste compatibility */}
+        {compatibility !== undefined && compatibility !== null && (
+          <p style={{ fontSize: 11, fontWeight: 600, marginTop: 3, color: compatColor(compatibility) }}>
+            🎵 You agree {compatibility}% of the time
+          </p>
+        )}
+      </div>
+
+      {/* Follow button */}
+      <button
+        onClick={isFollowing ? onUnfollow : onFollow}
+        disabled={loading}
+        style={{
+          padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+          cursor: loading ? 'default' : 'pointer',
+          border: isFollowing ? '1.5px solid var(--border)' : 'none',
+          background: isFollowing ? 'white' : 'var(--pink)',
+          color: isFollowing ? 'var(--gray-text)' : 'white',
+          fontFamily: 'inherit', flexShrink: 0,
+          opacity: loading ? 0.6 : 1,
+        }}
+      >
+        {loading ? '...' : isFollowing ? 'Unfollow' : 'Follow'}
+      </button>
     </div>
   )
 }
