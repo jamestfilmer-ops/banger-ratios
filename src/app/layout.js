@@ -1,6 +1,7 @@
 import './globals.css'
 import Nav from './components/Nav'
 import NewsBanner from './components/NewsBanner'
+import Footer from './components/Footer'
 
 export const metadata = {
   title: 'Banger Ratios — The Real Measure of Musical Consistency',
@@ -30,6 +31,7 @@ export default function RootLayout({ children }) {
         <NewsBanner />
         <Nav />
         {children}
+        <Footer />
       </body>
     </html>
   )
