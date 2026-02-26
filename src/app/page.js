@@ -24,31 +24,41 @@ export default function Home() {
   const [results, setResults] = useState([])
   const [topAlbums, setTopAlbums] = useState([])
   const [loading, setLoading] = useState(false)
+  const [topLoading, setTopLoading] = useState(true)
+  const [searchError, setSearchError] = useState(null)
   const [showBanner, setShowBanner] = useState(true)
   const [showCount, setShowCount] = useState(20)
  
   useEffect(() => { loadTop() }, [])
  
   async function loadTop() {
+    setTopLoading(true)
+    setShowCount(20)
     const { data } = await supabase
       .from('albums').select('*')
       .gt('total_ratings', 0)
       .order('banger_ratio', { ascending: false })
       .limit(50)
     setTopAlbums(data || [])
+    setTopLoading(false)
   }
  
   async function search(e) {
     e.preventDefault()
     if (!query.trim()) return
     setLoading(true)
+    setResults([])
+    setSearchError(null)
     try {
       const r = await fetch(
         `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=album&limit=15`
       )
       const d = await r.json()
       setResults(d.results || [])
-    } catch(e) { console.error(e) }
+    } catch(err) {
+      console.error(err)
+      setSearchError('Something went wrong with the search. Try again.')
+    }
     setLoading(false)
   }
  
@@ -103,6 +113,11 @@ export default function Home() {
             {loading ? '...' : 'Search'}
           </button>
         </form>
+
+        {/* Search error */}
+        {searchError && (
+          <p style={{ color: '#FF0066', fontSize: 13, marginTop: 10 }}>{searchError}</p>
+        )}
       </section>
  
       <main style={{ maxWidth: 900, margin: '0 auto', padding: '0 24px 80px' }}>
@@ -142,7 +157,11 @@ export default function Home() {
           <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>🔥 Top Albums</h2>
           <p style={{ color: 'var(--gray-400)', fontSize: 13, marginBottom: 20 }}>Ranked by community Banger Ratio</p>
  
-          {topAlbums.length === 0 && (
+          {topLoading && (
+            <p style={{ color: 'var(--gray-400)', textAlign: 'center', padding: '40px 0' }}>Loading top albums...</p>
+          )}
+
+          {!topLoading && topAlbums.length === 0 && (
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
               <p style={{ fontSize: 40, marginBottom: 12 }}>🎵</p>
               <p style={{ color: 'var(--gray-400)' }}>No rated albums yet. Search above and be the first!</p>
