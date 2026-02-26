@@ -239,3 +239,10 @@ input, textarea { font-family: inherit; }
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* Mobile nav */
+@media (max-width: 640px) {
+  .desktop-nav { display: none !important; }
+  .hamburger   { display: flex !important; }
+  .mobile-menu { display: block; }
+}
