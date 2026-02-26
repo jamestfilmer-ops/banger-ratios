@@ -1,0 +1,1959 @@
+BANGER RATIOS
+DEPLOYMENT GUIDE
+BR DEP VII
+February 2026  ·  github.com/jamestfilmer-ops  ·  bangerratios.com
+What this guide gives you:
+✓  Complete SQL to fix your Supabase database (9 blocks, run one at a time)
+✓  Every single file's complete code — 100% copy-paste ready
+✓  Step-by-step terminal commands for each batch
+✓  Localhost testing steps before you push to Vercel
+✓  Explained in plain English at every step
+
+
+READ THIS FIRST: Do the Supabase SQL (Section 1) before touching any code files. The SQL fixes your database, which is why auth has been broken. Everything else depends on the database being correct.
+YOUR WORKFLOW: Fix database → Update files in batches → Test at localhost:3000 → Push to GitHub → Vercel auto-deploys. Never push straight to GitHub without testing locally first.
+SECTION 1: Fix Your Supabase Database
+THE BIG PROBLEM: When you sign in, nothing happens on your profile page because the profiles table is missing columns — and there's no trigger to auto-create a profile row when someone signs up. The SQL blocks below fix all of this. Your 4 tables are correct — albums, tracks, ratings, profiles. You don't need 6 tables. Some columns inside those tables are missing, which is what we're fixing.
+Where to run this SQL
+1.	Go to supabase.com and log in
+2.	Click your banger-ratios project
+3.	In the left sidebar, click "SQL Editor"
+4.	Click "New query"
+5.	Copy a block of SQL below, paste it in, click the green "Run" button
+6.	Wait for "Success" message, then move to the next block
+⚠  Run each block SEPARATELY. Do not paste all 9 blocks at once. Read the "Success" confirmation after each one before proceeding.
+✓  All blocks are safe to re-run. If you accidentally run one twice, nothing breaks.
+BLOCK 1 — Check what you currently have
+Run this first. It shows you all your existing columns. Screenshot it so you can compare.
+  SQL → paste in Supabase SQL Editor → click Run
+-- BLOCK 1: Run this FIRST to see what columns you already have.
+-- Copy this, paste in Supabase SQL Editor, click RUN.
+ 
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+AND table_name IN ('albums','tracks','ratings','profiles')
+ORDER BY table_name, ordinal_position;
+ 
+BLOCK 2 — Fix albums table (add missing columns)
+  SQL → paste in Supabase SQL Editor → click Run
+-- BLOCK 2: Safely add missing columns to albums table
+-- (Will not break anything if columns already exist)
+ 
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='albums' AND column_name='banger_ratio') THEN
+    ALTER TABLE albums ADD COLUMN banger_ratio numeric(5,2);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='albums' AND column_name='total_ratings') THEN
+    ALTER TABLE albums ADD COLUMN total_ratings int DEFAULT 0;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='albums' AND column_name='updated_at') THEN
+    ALTER TABLE albums ADD COLUMN updated_at timestamptz DEFAULT now();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='albums' AND column_name='itunes_collection_id') THEN
+    ALTER TABLE albums ADD COLUMN itunes_collection_id bigint;
+    ALTER TABLE albums ADD CONSTRAINT albums_itunes_id_unique UNIQUE (itunes_collection_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='albums' AND column_name='artwork_url') THEN
+    ALTER TABLE albums ADD COLUMN artwork_url text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='albums' AND column_name='release_date') THEN
+    ALTER TABLE albums ADD COLUMN release_date date;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='albums' AND column_name='genre') THEN
+    ALTER TABLE albums ADD COLUMN genre text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='albums' AND column_name='track_count') THEN
+    ALTER TABLE albums ADD COLUMN track_count int;
+  END IF;
+END $$;
+ 
+BLOCK 3 — Fix tracks table
+  SQL → paste in Supabase SQL Editor → click Run
+-- BLOCK 3: Safely add missing columns to tracks table
+ 
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tracks' AND column_name='album_id') THEN
+    ALTER TABLE tracks ADD COLUMN album_id bigint REFERENCES albums(id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tracks' AND column_name='itunes_track_id') THEN
+    ALTER TABLE tracks ADD COLUMN itunes_track_id bigint;
+    ALTER TABLE tracks ADD CONSTRAINT tracks_itunes_id_unique UNIQUE (itunes_track_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tracks' AND column_name='name') THEN
+    ALTER TABLE tracks ADD COLUMN name text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tracks' AND column_name='track_number') THEN
+    ALTER TABLE tracks ADD COLUMN track_number int;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tracks' AND column_name='duration_ms') THEN
+    ALTER TABLE tracks ADD COLUMN duration_ms int;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tracks' AND column_name='preview_url') THEN
+    ALTER TABLE tracks ADD COLUMN preview_url text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tracks' AND column_name='avg_rating') THEN
+    ALTER TABLE tracks ADD COLUMN avg_rating numeric(4,2);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tracks' AND column_name='total_ratings') THEN
+    ALTER TABLE tracks ADD COLUMN total_ratings int DEFAULT 0;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tracks' AND column_name='is_banger') THEN
+    ALTER TABLE tracks ADD COLUMN is_banger boolean DEFAULT false;
+  END IF;
+END $$;
+ 
+BLOCK 4 — Fix ratings table
+  SQL → paste in Supabase SQL Editor → click Run
+-- BLOCK 4: Safely add missing columns to ratings table
+ 
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ratings' AND column_name='user_id') THEN
+    ALTER TABLE ratings ADD COLUMN user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ratings' AND column_name='track_id') THEN
+    ALTER TABLE ratings ADD COLUMN track_id bigint REFERENCES tracks(id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ratings' AND column_name='album_id') THEN
+    ALTER TABLE ratings ADD COLUMN album_id bigint REFERENCES albums(id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ratings' AND column_name='score') THEN
+    ALTER TABLE ratings ADD COLUMN score int CHECK (score >= 1 AND score <= 7);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ratings' AND column_name='created_at') THEN
+    ALTER TABLE ratings ADD COLUMN created_at timestamptz DEFAULT now();
+  END IF;
+  -- Unique constraint so one user can only rate each track once
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ratings_user_track_unique') THEN
+    ALTER TABLE ratings ADD CONSTRAINT ratings_user_track_unique UNIQUE (user_id, track_id);
+  END IF;
+END $$;
+ 
+BLOCK 5 — Fix profiles table
+  SQL → paste in Supabase SQL Editor → click Run
+-- BLOCK 5: Safely add missing columns to profiles table
+ 
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='id') THEN
+    ALTER TABLE profiles ADD COLUMN id uuid REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='username') THEN
+    ALTER TABLE profiles ADD COLUMN username text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='email') THEN
+    ALTER TABLE profiles ADD COLUMN email text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='created_at') THEN
+    ALTER TABLE profiles ADD COLUMN created_at timestamptz DEFAULT now();
+  END IF;
+END $$;
+ 
+BLOCK 6 — Create the recalculate_banger_ratio function
+This function runs every time someone submits ratings. It recalculates whether each track is a Banger, then updates the album's Banger Ratio percentage. Without this, ratings don't update anything.
+  SQL → paste in Supabase SQL Editor → click Run
+-- BLOCK 6: The recalculate_banger_ratio function
+-- This runs every time someone submits ratings.
+-- Safe to re-run — replaces existing version.
+ 
+CREATE OR REPLACE FUNCTION recalculate_banger_ratio(p_album_id bigint)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  -- Step 1: Update each track with its aggregate stats
+  UPDATE tracks t SET
+    avg_rating = (
+      SELECT AVG(score)::numeric(4,2)
+      FROM ratings r WHERE r.track_id = t.id
+    ),
+    total_ratings = (
+      SELECT COUNT(*) FROM ratings r WHERE r.track_id = t.id
+    ),
+    is_banger = (
+      SELECT AVG(score) >= 5 FROM ratings r WHERE r.track_id = t.id
+    )
+  WHERE t.album_id = p_album_id;
+ 
+  -- Step 2: Update the album banger_ratio
+  UPDATE albums SET
+    banger_ratio = (
+      SELECT ROUND(
+        100.0 * COUNT(*) FILTER (WHERE is_banger) / NULLIF(COUNT(*),0),
+      2)
+      FROM tracks WHERE album_id = p_album_id AND total_ratings > 0
+    ),
+    total_ratings = (
+      SELECT COUNT(*) FROM ratings WHERE album_id = p_album_id
+    ),
+    updated_at = now()
+  WHERE id = p_album_id;
+END;
+$$;
+ 
+BLOCK 7 — Set up Row Level Security
+This controls who can read/write what. Public can read everything (for the leaderboard). Only logged-in users can write their own ratings and profile.
+  SQL → paste in Supabase SQL Editor → click Run
+-- BLOCK 7: Row Level Security (RLS)
+-- Controls who can read and write what.
+-- Run this entire block at once.
+ 
+ALTER TABLE albums  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tracks  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ratings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ 
+-- ANYONE can read albums, tracks, ratings (needed for leaderboard)
+DROP POLICY IF EXISTS "read albums" ON albums;
+CREATE POLICY "read albums" ON albums FOR SELECT USING (true);
+ 
+DROP POLICY IF EXISTS "read tracks" ON tracks;
+CREATE POLICY "read tracks" ON tracks FOR SELECT USING (true);
+ 
+DROP POLICY IF EXISTS "read ratings" ON ratings;
+CREATE POLICY "read ratings" ON ratings FOR SELECT USING (true);
+ 
+DROP POLICY IF EXISTS "read profiles" ON profiles;
+CREATE POLICY "read profiles" ON profiles FOR SELECT USING (true);
+ 
+-- LOGGED-IN users can write albums and tracks (when they rate an album)
+DROP POLICY IF EXISTS "write albums" ON albums;
+CREATE POLICY "write albums" ON albums FOR ALL
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
+ 
+DROP POLICY IF EXISTS "write tracks" ON tracks;
+CREATE POLICY "write tracks" ON tracks FOR ALL
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
+ 
+-- Users can only write THEIR OWN ratings
+DROP POLICY IF EXISTS "own ratings" ON ratings;
+CREATE POLICY "own ratings" ON ratings FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+ 
+-- Users can only write THEIR OWN profile
+DROP POLICY IF EXISTS "own profile" ON profiles;
+CREATE POLICY "own profile" ON profiles FOR ALL
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
+ 
+BLOCK 8 — Auto-create profile on signup
+THIS IS THE KEY FIX for the "profile already exists" error and the blank profile page. This creates a trigger — think of it like a rule that fires automatically. Whenever a new user signs up, Supabase automatically creates a row in your profiles table for them. No more manual steps, no more errors.
+  SQL → paste in Supabase SQL Editor → click Run
+-- BLOCK 8: Auto-create profile when user signs up
+-- This FIXES the "profile already exists" error you were seeing.
+-- Now a profile row is created automatically on every signup.
+ 
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  INSERT INTO profiles (id, email, username, created_at)
+  VALUES (
+    new.id,
+    new.email,
+    split_part(new.email, '@', 1),
+    now()
+  )
+  ON CONFLICT (id) DO NOTHING;  -- prevents "already exists" error
+  RETURN new;
+END;
+$$;
+ 
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+ 
+BLOCK 9 — Verify everything worked
+Run this last. You should see all 4 tables with all their columns listed.
+  SQL → paste in Supabase SQL Editor → click Run
+-- BLOCK 9: Verify everything looks correct.
+-- Run last. You should see 4 tables with all their columns.
+ 
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+AND table_name IN ('albums','tracks','ratings','profiles')
+ORDER BY table_name, ordinal_position;
+ 
+✓  If Block 9 shows albums, tracks, ratings, and profiles — all with multiple columns — your database is fixed. Move to Section 2.
+SECTION 2: Check Your Environment Setup
+Before updating any page files, confirm these 2 infrastructure files are correct. These are the foundation. If either is wrong, nothing works.
+File 1 of 2: .env.local (your secret keys)
+Location: ~/Desktop/banger-ratios/.env.local
+This file stores your Supabase URL and key. It must exist and have these exact values:
+  Terminal: check if the file exists and has correct content
+cat ~/Desktop/banger-ratios/.env.local
+ 
+If the file is missing or empty, create it:
+  Terminal: create the .env.local file
+cd ~/Desktop/banger-ratios
+ 
+cat << 'EOF' > .env.local
+NEXT_PUBLIC_SUPABASE_URL=https://vqtftxerpwpixhmpowvx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxdGZ0eGVycHdwaXhobXBvd3Z4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3OTM0NjIsImV4cCI6MjA4NzM2OTQ2Mn0.u17SmE31dhe3LtBvY0l5cO_noWnyLBtKot7c7G8botg
+EOF
+ 
+⚠  Never add .env.local to GitHub. It should be in your .gitignore already.
+File 2 of 2: src/lib/supabase.js (the connection client)
+Check this file exists. If it doesn't, the whole site crashes with "Cannot find module" errors.
+  Terminal: check it exists
+cat ~/Desktop/banger-ratios/src/lib/supabase.js
+ 
+If missing, create it:
+  Terminal: create supabase.js
+mkdir -p ~/Desktop/banger-ratios/src/lib
+ 
+cat << 'EOF' > ~/Desktop/banger-ratios/src/lib/supabase.js
+// File: src/lib/supabase.js
+// This file should already exist. If not, create it with this content.
+ 
+import { createClient } from '@supabase/supabase-js'
+ 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+ 
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+EOF
+ 
+SECTION 3: How to Update Code Files (Read This Once)
+You have two methods. Pick whichever feels more comfortable. Both work identically.
+METHOD A: Terminal (copy-paste command)
+For every file update, the command looks like this:
+  Template for replacing any file
+cd ~/Desktop/banger-ratios
+ 
+cat << 'EOF' > PATH/TO/FILE.js
+... paste entire file contents here ...
+EOF
+ 
+What this does: The cat << 'EOF' command creates (or completely replaces) a file. Everything between the first EOF and the last EOF becomes the file contents. It's the fastest method.
+METHOD B: VS Code or any text editor
+7.	Navigate to the file in Finder or VS Code
+8.	Select ALL (Cmd+A on Mac)
+9.	Delete everything
+10.	Paste the new code from this guide
+11.	Save (Cmd+S)
+Both methods are identical — the file ends up with the same content either way.
+How to test locally before pushing
+  Terminal: start local dev server
+cd ~/Desktop/banger-ratios
+npm run dev
+# Open http://localhost:3000 in your browser
+# Changes appear instantly when you save a file
+# Ctrl+C to stop the server
+ 
+  Terminal: check for build errors (do this before every push)
+cd ~/Desktop/banger-ratios
+npm run build
+# If you see errors, fix them before pushing
+# If you see "✓ Compiled successfully" — safe to push
+ 
+How to push to GitHub (triggers Vercel auto-deploy)
+  Terminal: push all changes to GitHub
+cd ~/Desktop/banger-ratios
+git add .
+git commit -m "describe what you changed"
+git push
+# Wait ~60 seconds, then check www.bangerratios.com
+ 
+💡  Vercel watches your GitHub repo. Every push auto-deploys. You don't need to do anything in the Vercel dashboard.
+Testing checklist before every push
+•	localhost:3000 loads without errors in the terminal
+•	Homepage stat counters show 0 (real data) not fake numbers
+•	Sign in at localhost:3000/auth — does it redirect to /profile after?
+•	Profile page shows your email address (not "Username" placeholder)
+•	Leaderboard shows either real data or the curated seed list
+•	Click an album — do tracks appear with rating buttons?
+•	npm run build shows no errors
+SECTION 4: Batch 1 — Infrastructure Files
+Do this batch first. These 4 files are the skeleton of the site — the layout, CSS, navigation, and news ticker. Updating these first means every page looks correct before you update individual pages.
+Batch 1 Files
+File	What it does
+next.config.mjs	Allows iTunes album art images to load
+src/app/globals.css	ALL site styles — colors, nav, buttons, cards, animations
+src/app/layout.js	Wraps every page — adds news ticker + nav at top
+src/app/components/Nav.js	Navigation with pink SIGN IN button + auth awareness
+src/app/components/NewsBanner.js	Pink scrolling news ticker at very top of site
+FILE: next.config.mjs
+Location: root of project (same level as package.json, NOT inside src/)
+⚠  This file is next.config.mjs with .mjs extension, not .js. Do not rename it.
+  Terminal command to replace this file
+cd ~/Desktop/banger-ratios
+cat << 'EOF' > next.config.mjs
+// File: next.config.mjs (root of project, NOT inside src/)
+ 
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '*.mzstatic.com',
+      },
+    ],
+  },
+}
+ 
+export default nextConfig
+EOF
+ 
+FILE: src/app/globals.css
+IMPORTANT: The @import "tailwindcss"; line MUST be at the very top of this file. If it's in the middle, the site crashes with a CSS parse error. This was one of ChatGPT's mistakes.
+  Terminal command to replace globals.css
+cd ~/Desktop/banger-ratios
+cat << 'EOF' > src/app/globals.css
+/* File: src/app/globals.css */
+/* IMPORTANT: @import MUST be the very first line */
+ 
+@import "tailwindcss";
+ 
+:root {
+  --pink: #FF0066;
+  --pink-hover: #E6005C;
+  --black: #111111;
+  --gray-text: #6B7280;
+  --border: #E5E7EB;
+  --bg-soft: #F9FAFB;
+}
+ 
+* { box-sizing: border-box; }
+html { background: var(--bg-soft); }
+ 
+body {
+  font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  color: var(--black);
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+  overflow-x: hidden;
+}
+ 
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; }
+ 
+/* Pink glow behind header */
+body::before {
+  content: "";
+  position: fixed; top: -200px; left: 50%;
+  transform: translateX(-50%);
+  width: 800px; height: 800px;
+  background: radial-gradient(circle, rgba(255,0,102,0.12) 0%, transparent 70%);
+  z-index: -1; pointer-events: none;
+}
+ 
+/* ====== NEWS BAR ====== */
+.news-bar {
+  background: var(--pink); color: white;
+  height: 36px; overflow: hidden;
+  position: relative; display: flex; align-items: center;
+}
+ 
+@keyframes ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+ 
+.news-bar-track {
+  display: flex; white-space: nowrap;
+  animation: ticker 60s linear infinite;
+  will-change: transform;
+}
+.news-bar-track:hover { animation-play-state: paused; }
+.news-bar-item { font-size: 0.78rem; font-weight: 500; letter-spacing: 0.5px; padding: 0 0.5rem; }
+.news-bar-sep { margin: 0 1.2rem; opacity: 0.5; font-size: 0.6rem; }
+ 
+/* ====== NAV ====== */
+.nav {
+  background: rgba(249,250,251,0.95); backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+.nav-inner {
+  max-width: 1200px; margin: 0 auto;
+  padding: 1.4rem 3rem;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.nav-right { display: flex; gap: 2.5rem; align-items: center; }
+.logo { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; font-size: 1.1rem; letter-spacing: 1px; }
+.logo-square { width: 14px; height: 14px; background: var(--pink); border-radius: 3px; }
+.logo-pink { color: var(--pink); }
+.nav-link span { position: relative; font-weight: 500; font-size: 0.82rem; letter-spacing: 1.5px; color: var(--black); }
+.nav-link span::after { content: ""; position: absolute; left: 0; bottom: -4px; height: 2px; width: 0%; background: var(--pink); transition: width 0.2s ease; }
+.nav-link span:hover::after { width: 100%; }
+.nav-link span.active { color: var(--pink); }
+.nav-link span.active::after { width: 100%; }
+ 
+/* ====== LAYOUT ====== */
+.section { max-width: 1100px; margin: 0 auto; padding: 6rem 2rem; }
+.page-header { text-align: center; margin-bottom: 4rem; }
+.page-header h1 { font-size: 2.75rem; font-weight: 700; margin-bottom: 1rem; }
+.page-header p { color: var(--gray-text); font-size: 1.1rem; }
+ 
+/* ====== BUTTONS ====== */
+.primary-btn {
+  background: var(--pink); color: white;
+  padding: 0.9rem 2.2rem; border-radius: 12px;
+  font-weight: 600; font-size: 0.95rem;
+  box-shadow: 0 10px 30px rgba(255,0,102,0.22);
+  transition: all 0.2s ease; border: none; cursor: pointer; display: inline-block;
+}
+.primary-btn:hover { background: var(--pink-hover); transform: translateY(-2px); box-shadow: 0 14px 35px rgba(255,0,102,0.3); }
+.secondary-btn {
+  border: 1px solid var(--border); background: white;
+  padding: 0.9rem 2.2rem; border-radius: 12px;
+  font-weight: 500; font-size: 0.95rem;
+  transition: all 0.2s ease; cursor: pointer; display: inline-block;
+}
+.secondary-btn:hover { border-color: var(--pink); color: var(--pink); transform: translateY(-2px); }
+ 
+/* ====== STATS (homepage counters) ====== */
+.stats { border-top: 1px solid var(--border); margin-top: 4rem; padding-top: 4rem; display: flex; justify-content: center; gap: 6rem; }
+.stat-number { font-size: 2.5rem; font-weight: 700; color: var(--pink); }
+.stat-label { font-size: 0.72rem; letter-spacing: 2px; color: var(--gray-text); margin-top: 0.3rem; font-weight: 600; }
+ 
+/* ====== CARDS ====== */
+.card { background: white; border: 1px solid var(--border); border-radius: 16px; padding: 2rem; transition: all 0.2s ease; }
+.card:hover { border-color: #ddd; box-shadow: 0 8px 30px rgba(0,0,0,0.06); transform: translateY(-2px); }
+ 
+/* ====== INPUTS ====== */
+.input { width: 100%; padding: 0.8rem 1rem; border: 1px solid var(--border); border-radius: 10px; font-size: 0.95rem; font-family: inherit; outline: none; transition: border-color 0.2s; background: white; }
+.input:focus { border-color: var(--pink); }
+ 
+/* ====== BADGE ====== */
+.badge { display: inline-block; font-size: 0.65rem; font-weight: 700; letter-spacing: 1px; padding: 3px 8px; border-radius: 5px; background: var(--pink); color: white; }
+.badge-gray { background: #1D1D1F; }
+.badge-green { background: #00B84D; }
+EOF
+ 
+FILE: src/app/layout.js
+This wraps every page. It adds the news ticker and nav bar at the top. The font (Space Grotesk) is loaded here.
+  Terminal command to replace layout.js
+cd ~/Desktop/banger-ratios
+cat << 'EOF' > src/app/layout.js
+// File: src/app/layout.js
+import './globals.css'
+import Nav from './components/Nav'
+import NewsBanner from './components/NewsBanner'
+ 
+export const metadata = {
+  title: 'Banger Ratios',
+  description: 'Rate albums. Calculate Banger Ratios.',
+}
+ 
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>
+        <NewsBanner />
+        <Nav />
+        {children}
+      </body>
+    </html>
+  )
+}
+EOF
+ 
+FILE: src/app/components/Nav.js
+The navigation bar. Key improvements: pink SIGN IN button, shows PROFILE and SIGN OUT when logged in, underline animation on active links.
+  Terminal command to replace Nav.js
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/components
+cat << 'EOF' > src/app/components/Nav.js
+// File: src/app/components/Nav.js
+'use client'
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+ 
+export default function Nav() {
+  const pathname = usePathname()
+  const router = useRouter()
+  const [user, setUser] = useState(null)
+ 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data?.user || null))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      setUser(session?.user || null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+ 
+  const signOut = async () => {
+    await supabase.auth.signOut()
+    setUser(null)
+    router.push('/')
+  }
+ 
+  const navItem = (href, label) => (
+    <Link key={href} href={href} className="nav-link">
+      <span className={pathname === href ? "active" : ""}>{label}</span>
+    </Link>
+  )
+ 
+  return (
+    <nav className="nav">
+      <div className="nav-inner">
+        <Link href="/" className="logo">
+          <span className="logo-square" />
+          BANGER <span className="logo-pink">RATIOS</span>
+        </Link>
+        <div className="nav-right">
+          {navItem('/', 'HOME')}
+          {navItem('/albums', 'ALBUMS')}
+          {navItem('/artists', 'ARTISTS')}
+          {navItem('/leaderboards', 'LEADERBOARD')}
+          {navItem('/releases', 'RELEASES')}
+          {navItem('/merch', 'MERCH')}
+          {user ? (
+            <>
+              <Link href="/profile" className="nav-link">
+                <span className={pathname === "/profile" ? "active" : ""}>PROFILE</span>
+              </Link>
+              <button onClick={signOut} style={{
+                background: "none", border: "none", cursor: "pointer", padding: 0,
+                fontFamily: 'inherit', fontWeight: 500, fontSize: '0.82rem',
+                letterSpacing: '1.5px', color: 'var(--gray-text)',
+              }}>SIGN OUT</button>
+            </>
+          ) : (
+            <Link href="/auth">
+              <span style={{
+                background: 'var(--pink)', color: 'white',
+                padding: '0.45rem 1.2rem', borderRadius: '8px',
+                fontSize: '0.78rem', fontWeight: 700, letterSpacing: '1px',
+                display: 'inline-block',
+                boxShadow: '0 4px 12px rgba(255,0,102,0.25)',
+              }}>SIGN IN</span>
+            </Link>
+          )}
+        </div>
+      </div>
+    </nav>
+  )
+}
+EOF
+ 
+FILE: src/app/components/NewsBanner.js
+The pink scrolling ticker at the very top of the site. Tries to fetch real Pitchfork headlines first, falls back to handwritten headlines if that fails.
+  Terminal command to replace NewsBanner.js
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/components
+cat << 'EOF' > src/app/components/NewsBanner.js
+// File: src/app/components/NewsBanner.js
+'use client'
+import { useEffect, useState } from 'react'
+ 
+const FALLBACK_HEADLINES = [
+  '🔥 Kendrick Lamar dominates with 91% — community crown confirmed',
+  '📊 Chappell Roan scores 87% — "Red Wine Supernova" named track of the month',
+  '🎵 New Banger Ratios feature: track previews now live on every album page',
+  '🏆 Leaderboard updated — 3 new entries cracked the top 10 this week',
+  '🚨 BREAKING: Algorithm updated to weight recency of community ratings',
+  '🎤 Tyler, the Creator back catalog fully rated — 94% on Igor',
+  '💿 Frank Ocean's Blonde holds steady at #1 with 96% Banger Ratio',
+  '🌟 Community growing — rate an album today and make your mark',
+]
+ 
+export default function NewsBanner() {
+  const [headlines, setHeadlines] = useState(FALLBACK_HEADLINES)
+ 
+  useEffect(() => {
+    async function fetchNews() {
+      try {
+        const res = await fetch(
+          'https://api.rss2json.com/v1/api.json?rss_url=https%3A%2F%2Fpitchfork.com%2Ffeed%2Ffeed-news%2Fjson&count=8'
+        )
+        const data = await res.json()
+        if (data.status === 'ok' && data.items?.length > 0) {
+          setHeadlines([...data.items.map(i => '🎵 ' + i.title), ...FALLBACK_HEADLINES.slice(0,3)])
+        }
+      } catch {
+        // silently use fallback headlines
+      }
+    }
+    fetchNews()
+  }, [])
+ 
+  const ticker = [...headlines, ...headlines]
+ 
+  return (
+    <div className="news-bar">
+      <div className="news-bar-track">
+        {ticker.map((h, i) => (
+          <span key={i} className="news-bar-item">
+            {h}
+            <span className="news-bar-sep">◆</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+EOF
+ 
+Test Batch 1
+  Terminal: start dev server and test
+cd ~/Desktop/banger-ratios
+rm -rf .next
+npm run dev
+ 
+Open http://localhost:3000. You should see:
+•	Pink scrolling news ticker at the very top
+•	Nav with SIGN IN as a pink pill button
+•	White clean homepage layout
+•	No red error messages in terminal
+  When it looks good, push Batch 1:
+git add .
+git commit -m "batch 1: infrastructure, nav, css, news ticker"
+git push
+ 
+SECTION 5: Batch 2 — Auth & Profile Pages
+The most important batch. This fixes sign-in (redirects to profile), sign-up (creates profile row), and the profile page (shows real data instead of the dummy placeholder).
+FILE: src/app/page.js (Homepage with real stats)
+Replaces the fake hardcoded counters (24,831 / 2.4M / 187K) with real live counts from your Supabase database. They'll show 0 at first — that's correct and good.
+  Terminal command to replace homepage
+cd ~/Desktop/banger-ratios
+cat << 'EOF' > src/app/page.js
+// File: src/app/page.js
+'use client'
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+ 
+function AnimatedCount({ value }) {
+  const [display, setDisplay] = useState(0)
+  useEffect(() => {
+    if (value === null) return
+    const steps = 50
+    const increment = value / steps
+    let step = 0
+    const timer = setInterval(() => {
+      step++
+      setDisplay(Math.min(Math.round(increment * step), value))
+      if (step >= steps) clearInterval(timer)
+    }, 1200 / steps)
+    return () => clearInterval(timer)
+  }, [value])
+  if (value === null) return <span style={{ color: "#ddd" }}>—</span>
+  const n = display
+  const f = n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'K' : n.toLocaleString()
+  return <span>{f}</span>
+}
+ 
+export default function Home() {
+  const [counts, setCounts] = useState({ albums: null, ratings: null, users: null })
+  useEffect(() => {
+    async function load() {
+      const [{ count: a }, { count: r }, { count: u }] = await Promise.all([
+        supabase.from('albums').select('*', { count: 'exact', head: true }),
+        supabase.from('ratings').select('*', { count: 'exact', head: true }),
+        supabase.from('profiles').select('*', { count: 'exact', head: true }),
+      ])
+      setCounts({ albums: a||0, ratings: r||0, users: u||0 })
+    }
+    load()
+  }, [])
+ 
+  return (
+    <main className="section">
+      <div style={{ textAlign: "center", paddingTop: "2rem" }}>
+        <div style={{
+          display: "inline-block", background: "#FFF0F5", borderRadius: "20px",
+          padding: "0.35rem 1rem", marginBottom: "1.5rem",
+          fontSize: "0.78rem", fontWeight: 700, letterSpacing: "1.5px", color: "var(--pink)",
+        }}>COMMUNITY-POWERED MUSIC RATINGS</div>
+ 
+        <h1 style={{ fontSize: "3.5rem", fontWeight: 700, lineHeight: 1.1,
+          maxWidth: 800, margin: "0 auto 1.5rem" }}>
+          Streams Don't Measure{" "}
+          <span style={{ color: "var(--pink)" }}>Talent.</span>
+        </h1>
+ 
+        <p style={{ fontSize: "1.2rem", color: "var(--gray-text)",
+          maxWidth: 600, margin: "0 auto 2.5rem", lineHeight: 1.6 }}>
+          Rate every track 1–7. The <strong style={{ color: "var(--black)" }}>Banger Ratio</strong> reveals which albums actually deliver.
+        </p>
+ 
+        <div style={{ display: "flex", justifyContent: "center", gap: "1rem",
+          marginBottom: "5rem", flexWrap: "wrap" }}>
+          <Link href="/albums" className="primary-btn">Start Rating</Link>
+          <Link href="/leaderboards" className="secondary-btn">View Leaderboard</Link>
+        </div>
+ 
+        <div className="stats">
+          <div>
+            <div className="stat-number"><AnimatedCount value={counts.albums} /></div>
+            <div className="stat-label">ALBUMS RATED</div>
+          </div>
+          <div>
+            <div className="stat-number"><AnimatedCount value={counts.ratings} /></div>
+            <div className="stat-label">TRACK RATINGS</div>
+          </div>
+          <div>
+            <div className="stat-number"><AnimatedCount value={counts.users} /></div>
+            <div className="stat-label">ACTIVE RATERS</div>
+          </div>
+        </div>
+ 
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "1.5rem", marginTop: "5rem", textAlign: "left" }}>
+          {[
+            { icon: "🎵", title: "Rate Track-by-Track", desc: "Score each song 1–7. Not just the album as a whole." },
+            { icon: "🔥", title: "Calculate the Ratio", desc: "Tracks rated 5+ are Bangers. The % is your Banger Ratio." },
+            { icon: "🏆", title: "See the Truth", desc: "Community rankings expose what streaming numbers hide." },
+          ].map((f, i) => (
+            <div key={i} className="card">
+              <div style={{ fontSize: "1.8rem", marginBottom: "0.75rem" }}>{f.icon}</div>
+              <h3 style={{ fontWeight: 700, marginBottom: "0.4rem" }}>{f.title}</h3>
+              <p style={{ color: "var(--gray-text)", fontSize: "0.9rem", lineHeight: 1.5 }}>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </main>
+  )
+}
+EOF
+ 
+FILE: src/app/auth/page.js
+The sign-in / sign-up page. Key fixes: after signing in successfully it redirects to /profile (before it did nothing). Sign-up creates your profile row in Supabase. Password must be min 6 chars.
+  Terminal command to replace auth page
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/auth
+cat << 'EOF' > src/app/auth/page.js
+// File: src/app/auth/page.js
+'use client'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+ 
+export default function Auth() {
+  const router = useRouter()
+  const [mode, setMode] = useState('signin')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [username, setUsername] = useState('')
+  const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false)
+ 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => { if (user) router.push('/profile') })
+  }, [])
+ 
+  const signIn = async () => {
+    if (!email || !password) { setMessage('Please enter email and password.'); return }
+    setLoading(true)
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) { setMessage(error.message); setLoading(false) } else { router.push('/profile') }
+  }
+ 
+  const signUp = async () => {
+    if (!email || !password) { setMessage('Please enter email and password.'); return }
+    if (password.length < 6) { setMessage('Password must be at least 6 characters.'); return }
+    setLoading(true)
+    const { data, error } = await supabase.auth.signUp({ email, password })
+    if (error) { setMessage(error.message); setLoading(false); return }
+    if (data?.user) {
+      await supabase.from('profiles').upsert({
+        id: data.user.id, username: username || email.split('@')[0], email,
+      }, { onConflict: 'id', ignoreDuplicates: true })
+    }
+    setMessage('Account created! Check your email to confirm, then sign in.')
+    setLoading(false)
+  }
+ 
+  const key = (e) => { if (e.key === "Enter") mode === "signin" ? signIn() : signUp() }
+ 
+  return (
+    <main className="section" style={{ paddingTop: "5rem" }}>
+      <div style={{ maxWidth: 440, margin: "0 auto" }}>
+        <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
+          <h1 style={{ fontSize: "2.2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+            {mode === "signin" ? "Welcome back" : "Join Banger Ratios"}
+          </h1>
+          <p style={{ color: "var(--gray-text)" }}>
+            {mode === "signin" ? "Sign in to rate albums and track your scores." : "Create an account to start rating."}
+          </p>
+        </div>
+        <div style={{ background: "white", padding: "2.5rem", borderRadius: "20px",
+          border: "1px solid var(--border)", boxShadow: "0 4px 24px rgba(0,0,0,0.05)" }}>
+          <div style={{ display: "flex", marginBottom: "2rem",
+            border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
+            {["signin","signup"].map(m => (
+              <button key={m} onClick={() => { setMode(m); setMessage("") }} style={{
+                flex: 1, padding: "0.6rem", border: "none", cursor: "pointer",
+                background: mode === m ? "var(--pink)" : "white",
+                color: mode === m ? "white" : "var(--gray-text)",
+                fontWeight: 600, fontSize: "0.85rem", fontFamily: "inherit",
+              }}>{m === "signin" ? "Sign In" : "Create Account"}</button>
+            ))}
+          </div>
+          {mode === "signup" && (
+            <div style={{ marginBottom: "1rem" }}>
+              <label style={{ display: "block", fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.4rem" }}>Username</label>
+              <input className="input" type="text" placeholder="your_username"
+                value={username} onChange={e => setUsername(e.target.value)} onKeyDown={key} />
+            </div>
+          )}
+          <div style={{ marginBottom: "1rem" }}>
+            <label style={{ display: "block", fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.4rem" }}>Email</label>
+            <input className="input" type="email" placeholder="you@example.com"
+              value={email} onChange={e => setEmail(e.target.value)} onKeyDown={key} />
+          </div>
+          <div style={{ marginBottom: "1.5rem" }}>
+            <label style={{ display: "block", fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.4rem" }}>Password</label>
+            <input className="input" type="password"
+              placeholder={mode === "signup" ? "Min. 6 characters" : "••••••••"}
+              value={password} onChange={e => setPassword(e.target.value)} onKeyDown={key} />
+          </div>
+          <button onClick={mode === "signin" ? signIn : signUp} disabled={loading}
+            className="primary-btn" style={{ width: "100%", textAlign: "center", opacity: loading ? 0.7 : 1 }}>
+            {loading ? "Please wait..." : mode === "signin" ? "Sign In" : "Create Account"}
+          </button>
+          {message && (
+            <div style={{ marginTop: "1rem", padding: "0.75rem 1rem", borderRadius: "8px",
+              background: message.includes("created") ? "#f0fff4" : "#fff0f5",
+              color: message.includes("created") ? "#00B84D" : "#cc0044",
+              fontSize: "0.85rem", fontWeight: 500 }}>
+              {message}
+            </div>
+          )}
+        </div>
+        <p style={{ textAlign: "center", marginTop: "1.5rem", color: "var(--gray-text)", fontSize: "0.82rem" }}>
+          By signing in, you agree to help us expose mid albums.
+        </p>
+      </div>
+    </main>
+  )
+}
+EOF
+ 
+FILE: src/app/profile/page.js
+This is what was completely broken. The old version showed "Username / 132 albums rated" as static placeholder text that never changed. This new version reads your actual data from Supabase — your email, when you joined, how many albums and tracks you've rated, and a list of your recent ratings with artwork.
+If you haven't rated anything yet, it shows a friendly empty state with a link to Browse Albums.
+  Terminal command to replace profile page
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/profile
+cat << 'EOF' > src/app/profile/page.js
+// File: src/app/profile/page.js
+'use client'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+ 
+function StatBox({ value, label }) {
+  return (
+    <div style={{ background: "var(--bg-soft)", borderRadius: "14px",
+      padding: "1.4rem 1.8rem", textAlign: "center", flex: 1, minWidth: 120 }}>
+      <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--pink)" }}>{value}</div>
+      <div style={{ fontSize: "0.7rem", letterSpacing: "1.5px", color: "var(--gray-text)", fontWeight: 600, marginTop: "0.3rem" }}>{label}</div>
+    </div>
+  )
+}
+ 
+export default function Profile() {
+  const router = useRouter()
+  const [user, setUser] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [stats, setStats] = useState({ albums: 0, tracks: 0 })
+  const [recent, setRecent] = useState([])
+  const [loading, setLoading] = useState(true)
+ 
+  useEffect(() => {
+    async function load() {
+      const { data: { user: u } } = await supabase.auth.getUser()
+      if (!u) { router.push('/auth'); return }
+      setUser(u)
+      const { data: prof } = await supabase.from('profiles').select('*').eq('id', u.id).single()
+      setProfile(prof)
+      const { data: rows } = await supabase.from('ratings').select('album_id,track_id').eq('user_id', u.id)
+      const uniqueAlbums = new Set((rows||[]).map(r => r.album_id)).size
+      setStats({ albums: uniqueAlbums, tracks: (rows||[]).length })
+      const { data: rec } = await supabase.from('ratings')
+        .select(`score, created_at,
+          tracks ( name, track_number ),
+          albums ( name, artist_name, artwork_url, itunes_collection_id )`)
+        .eq('user_id', u.id).order('created_at', { ascending: false }).limit(12)
+      setRecent(rec||[])
+      setLoading(false)
+    }
+    load()
+  }, [])
+ 
+  const signOut = async () => { await supabase.auth.signOut(); router.push("/") }
+ 
+  if (loading) return <div style={{ minHeight: "80vh", display: "flex", alignItems: "center", justifyContent: "center" }}><p style={{ color: "var(--gray-text)" }}>Loading profile...</p></div>
+ 
+  const name = profile?.username || user.email?.split('@')[0] || 'Rater'
+  const joinDate = new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  const initial = name.charAt(0).toUpperCase()
+ 
+  return (
+    <main className="section" style={{ paddingTop: "4rem" }}>
+      <div style={{ display: "flex", gap: "2rem", alignItems: "flex-start", marginBottom: "3rem", flexWrap: "wrap" }}>
+        <div style={{ width: 80, height: 80, borderRadius: "50%", flexShrink: 0,
+          background: "linear-gradient(135deg, #FF0066 0%, #7B2FF7 100%)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: "2rem", fontWeight: 700, color: "white" }}>{initial}</div>
+        <div style={{ flex: 1 }}>
+          <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.25rem" }}>{name}</h1>
+          <p style={{ color: "var(--gray-text)", fontSize: "0.9rem" }}>{user.email} · Member since {joinDate}</p>
+          <button onClick={signOut} style={{ marginTop: "0.75rem", padding: "0.45rem 1rem", borderRadius: "8px",
+            border: "1px solid var(--border)", background: "white", cursor: "pointer",
+            fontSize: "0.82rem", fontWeight: 600, color: "var(--gray-text)", fontFamily: "inherit" }}>Sign Out</button>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "3rem", flexWrap: "wrap" }}>
+        <StatBox value={stats.albums} label="ALBUMS RATED" />
+        <StatBox value={stats.tracks} label="TRACKS RATED" />
+        <StatBox value={stats.albums > 0 ? (stats.tracks/stats.albums).toFixed(1) : "—"} label="AVG TRACKS/ALBUM" />
+      </div>
+      {stats.tracks === 0 && (
+        <div style={{ background: "white", border: "1px solid var(--border)", borderRadius: "20px",
+          padding: "4rem", textAlign: "center", marginBottom: "3rem" }}>
+          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🎵</div>
+          <h2 style={{ fontWeight: 700, marginBottom: "0.75rem" }}>No ratings yet</h2>
+          <p style={{ color: "var(--gray-text)", marginBottom: "2rem", maxWidth: 400, margin: "0 auto 2rem" }}>
+            Search for any album, rate each track 1–7, and your stats appear here.
+          </p>
+          <Link href="/albums" className="primary-btn">Browse Albums</Link>
+        </div>
+      )}
+      {recent.length > 0 && (
+        <div>
+          <h2 style={{ fontWeight: 700, fontSize: "1.2rem", marginBottom: "1.5rem" }}>Recent Ratings</h2>
+          <div style={{ background: "white", border: "1px solid var(--border)", borderRadius: "16px", overflow: "hidden" }}>
+            {recent.map((r, i) => (
+              <Link key={i} href={`/album/${r.albums?.itunes_collection_id}`}
+                style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "1rem 1.5rem",
+                  borderBottom: i < recent.length-1 ? "1px solid var(--border)" : "none",
+                  textDecoration: "none", color: "inherit" }}>
+                {r.albums?.artwork_url && <img src={r.albums.artwork_url} alt=""
+                  style={{ width: 44, height: 44, borderRadius: "8px", objectFit: "cover", flexShrink: 0 }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 600, fontSize: "0.9rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {r.tracks?.name || "Track"}
+                  </p>
+                  <p style={{ color: "var(--gray-text)", fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {r.albums?.artist_name} — {r.albums?.name}
+                  </p>
+                </div>
+                <div style={{ width: 36, height: 36, borderRadius: "8px", flexShrink: 0,
+                  background: r.score >= 5 ? "var(--pink)" : r.score >= 3 ? "#f0f0f0" : "#fef0f0",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontWeight: 700, fontSize: "1rem",
+                  color: r.score >= 5 ? "white" : r.score >= 3 ? "var(--black)" : "#cc0000" }}>
+                  {r.score}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+    </main>
+  )
+}
+EOF
+ 
+Test Batch 2 — AUTH TESTING CHECKLIST
+⚠  This is the most important test. Go through every step before pushing.
+  Terminal: restart server and test
+cd ~/Desktop/banger-ratios
+rm -rf .next
+npm run dev
+ 
+Now open http://localhost:3000 and follow these steps in order:
+Test 1: Homepage counters
+•	The stat counters should show 0, 0, 0 (or real numbers if you've already rated things)
+•	If they show "—" dashes, your .env.local keys are wrong — go back to Section 2
+Test 2: Sign In flow
+•	Click SIGN IN in the nav (should be a pink button)
+•	You should land on localhost:3000/auth
+•	Enter your email and password, click Sign In
+•	You should be REDIRECTED to localhost:3000/profile — this is what was broken before
+•	Profile page should show your actual email address
+•	Stats should show 0 albums rated (correct — you haven't rated anything yet in the new DB)
+Test 3: Sign Out
+•	On the profile page, click Sign Out
+•	You should be redirected to homepage
+•	Nav should show SIGN IN button again (not PROFILE)
+Test 4: Sign Up (optional — for testing new accounts)
+•	Go to /auth, click "Create Account" tab
+•	Enter a test email and password (6+ chars)
+•	You should see "Account created! Check your email to confirm"
+•	Check Supabase → Table Editor → profiles — a new row should appear automatically
+  When all tests pass, push Batch 2:
+git add .
+git commit -m "batch 2: fix auth redirect, real profile page, real homepage counters"
+git push
+ 
+SECTION 6: Batch 3 — Leaderboard, Albums, Artists, Releases, About
+These pages work independently of auth. The leaderboard now shows a curated top-10 when the database is empty, instead of a blank page.
+FILE: src/app/leaderboards/page.js
+Shows real DB data when available. Falls back to a curated top-10 (Blonde, TPAB, IGOR, etc.) with a banner saying "Showing curated rankings — rate albums to build the real leaderboard!" Gold podium for top 3.
+  Terminal command to replace leaderboard
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/leaderboards
+cat << 'EOF' > src/app/leaderboards/page.js
+// File: src/app/leaderboards/page.js
+'use client'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
+ 
+const MEDAL = ['🥇','🥈','🥉']
+const SEED = [
+  { id:'1146195536', name:'Blonde', artist:'Frank Ocean', ratio:96, artwork:'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/67/ce/c0/67cec0f4-5a3e-88a6-6681-0e4fc929a6f7/886445919721.jpg/300x300bb.jpg' },
+  { id:'1440768268', name:'To Pimp a Butterfly', artist:'Kendrick Lamar', ratio:94, artwork:'https://is1-ssl.mzstatic.com/image/thumb/Music128/v4/35/76/0e/35760e94-d5e3-9aa7-2f08-48bb0c5de19e/00602547960146.jpg/300x300bb.jpg' },
+  { id:'1490488656', name:'IGOR', artist:'Tyler, the Creator', ratio:93, artwork:'' },
+  { id:'1440831453', name:'Flower Boy', artist:'Tyler, the Creator', ratio:91, artwork:'' },
+  { id:'1731426767', name:'GNX', artist:'Kendrick Lamar', ratio:91, artwork:'' },
+  { id:'1613725898', name:'Mr. Morale & The Big Steppers', artist:'Kendrick Lamar', ratio:89, artwork:'' },
+  { id:'1527285389', name:'SOS', artist:'SZA', ratio:89, artwork:'' },
+  { id:'1558475672', name:'Punisher', artist:'Phoebe Bridgers', ratio:88, artwork:'' },
+  { id:'617154241', name:'good kid m.A.A.d city', artist:'Kendrick Lamar', ratio:87, artwork:'' },
+  { id:'1735624349', name:'Brat', artist:'Charli XCX', ratio:87, artwork:'' },
+]
+ 
+function ratioColor(r) { return r>=90 ? "#00B84D" : r>=80 ? "#FF9500" : "var(--pink)" }
+function ratioLabel(r) { return r>=90 ? "CERTIFIED CLASSIC" : r>=80 ? "SOLID GOLD" : r>=70 ? "GOOD LISTEN" : "MIXED BAG" }
+ 
+export default function Leaderboards() {
+  const [albums, setAlbums] = useState([])
+  const [tab, setTab] = useState('all-time')
+  const [loading, setLoading] = useState(true)
+  const [usingReal, setUsingReal] = useState(false)
+ 
+  useEffect(() => { fetchLeaderboard() }, [tab])
+ 
+  async function fetchLeaderboard() {
+    setLoading(true)
+    let q = supabase.from('albums').select('*').not('banger_ratio','is',null).order('banger_ratio',{ascending:false}).limit(25)
+    if (tab === 'weekly') { const w = new Date(Date.now()-7*24*60*60*1000).toISOString(); q = q.gte('updated_at',w) }
+    const { data } = await q
+    if (data && data.length > 0) { setAlbums(data); setUsingReal(true) }
+    else { setAlbums(SEED); setUsingReal(false) }
+    setLoading(false)
+  }
+ 
+  const href = (a) => `/album/${a.itunes_collection_id || a.id}`
+  const name = (a) => a.name
+  const artist = (a) => a.artist_name || a.artist
+  const art = (a) => a.artwork_url || a.artwork
+  const ratio = (a) => a.banger_ratio || a.ratio
+ 
+  return (
+    <main className="section">
+      <div className="page-header">
+        <h1>Leaderboard</h1>
+        <p>Albums ranked by community Banger Ratio — no algorithms, no payola.</p>
+      </div>
+      <div style={{ display:"flex", gap:"0.5rem", marginBottom:"2.5rem", justifyContent:"center" }}>
+        {[{key:'all-time',label:'All Time'},{key:'weekly',label:'This Week'}].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{
+            padding:"0.5rem 1.5rem", borderRadius:"8px", border:"1px solid var(--border)",
+            background: tab===t.key ? "var(--pink)" : "white",
+            color: tab===t.key ? "white" : "var(--black)",
+            fontWeight:600, fontSize:"0.85rem", cursor:"pointer", fontFamily:"inherit"
+          }}>{t.label}</button>
+        ))}
+      </div>
+      {!usingReal && !loading && (
+        <div style={{ textAlign:"center", padding:"0.75rem", marginBottom:"2rem",
+          background:"#FFF0F5", borderRadius:"10px", fontSize:"0.82rem", color:"var(--pink)", fontWeight:500 }}>
+          Showing curated rankings — rate albums to build the real leaderboard!{" "}
+          <Link href="/albums" style={{ fontWeight:700, textDecoration:"underline" }}>Start rating →</Link>
+        </div>
+      )}
+      {loading ? <div style={{ textAlign:"center", padding:"5rem", color:"var(--gray-text)" }}>Loading...</div> : (
+        <div style={{ maxWidth:760, margin:"0 auto" }}>
+          {albums.length >= 3 && (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1.1fr 1fr", gap:"1rem", marginBottom:"2.5rem" }}>
+              {[1,0,2].map(rank => {
+                const a = albums[rank]
+                const h = rank===0 ? '170px' : rank===1 ? '210px' : '150px'
+                return (
+                  <Link key={rank} href={href(a)} style={{ textDecoration:"none", color:"inherit" }}>
+                    <div style={{ background:"white", borderRadius:"16px", padding:"1.5rem",
+                      border: rank===0 ? "2px solid #FFD700" : "1px solid var(--border)",
+                      textAlign:"center", minHeight:h,
+                      display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center", gap:"0.5rem" }}>
+                      <div style={{ fontSize:"1.6rem" }}>{MEDAL[rank]}</div>
+                      {art(a) && <img src={art(a)} alt="" style={{ width:56, height:56, borderRadius:"8px", objectFit:"cover" }} />}
+                      <p style={{ fontWeight:700, fontSize:"0.82rem" }}>{name(a)}</p>
+                      <p style={{ color:"var(--gray-text)", fontSize:"0.72rem" }}>{artist(a)}</p>
+                      <p style={{ fontWeight:800, fontSize:"1.3rem", color:ratioColor(ratio(a)) }}>{ratio(a)}%</p>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+          <div style={{ background:"white", border:"1px solid var(--border)", borderRadius:"16px", overflow:"hidden" }}>
+            {albums.map((album, i) => (
+              <Link key={i} href={href(album)} style={{ textDecoration:"none", color:"inherit" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"1rem", padding:"1rem 1.5rem",
+                  borderBottom: i < albums.length-1 ? "1px solid var(--border)" : "none",
+                  cursor:"pointer" }}
+                  onMouseOver={e => e.currentTarget.style.background="var(--bg-soft)"}
+                  onMouseOut={e => e.currentTarget.style.background="transparent"}>
+                  <span style={{ width:28, textAlign:"center", fontWeight:700, flexShrink:0,
+                    color: i<3 ? "var(--pink)" : "var(--gray-text)" }}>
+                    {i<3 ? MEDAL[i] : i+1}
+                  </span>
+                  {art(album) && <img src={art(album)} alt="" style={{ width:44, height:44, borderRadius:"8px", objectFit:"cover", flexShrink:0 }} />}
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ fontWeight:600, fontSize:"0.95rem", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{name(album)}</p>
+                    <p style={{ color:"var(--gray-text)", fontSize:"0.82rem" }}>{artist(album)}</p>
+                  </div>
+                  <div style={{ textAlign:"right", flexShrink:0 }}>
+                    <p style={{ fontWeight:800, fontSize:"1.1rem", color:ratioColor(ratio(album)) }}>{ratio(album)}%</p>
+                    <p style={{ fontSize:"0.65rem", color:"var(--gray-text)", fontWeight:600 }}>{ratioLabel(ratio(album))}</p>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+    </main>
+  )
+}
+EOF
+ 
+FILE: src/app/albums/page.js
+Browse and search albums. Has a live iTunes search — type any album name, pick from the dropdown, and go rate it. Shows community-rated albums from the DB, falls back to 12 seed albums.
+  Terminal command to replace albums page
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/albums
+cat << 'EOF' > src/app/albums/page.js
+'use client'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
+ 
+const SEED_ALBUMS = [
+  { itunes_id: 1440768268, title: 'To Pimp a Butterfly', artist: 'Kendrick Lamar' },
+  { itunes_id: 617154241,  title: 'good kid, m.A.A.d city', artist: 'Kendrick Lamar' },
+  { itunes_id: 1122185081, title: 'DAMN.', artist: 'Kendrick Lamar' },
+  { itunes_id: 1146195536, title: 'Blonde', artist: 'Frank Ocean' },
+  { itunes_id: 1440831453, title: 'Flower Boy', artist: 'Tyler, the Creator' },
+  { itunes_id: 1490488656, title: 'IGOR', artist: 'Tyler, the Creator' },
+  { itunes_id: 1527285389, title: 'SOS', artist: 'SZA' },
+  { itunes_id: 1558475672, title: 'Punisher', artist: 'Phoebe Bridgers' },
+  { itunes_id: 1549484521, title: 'Happier Than Ever', artist: 'Billie Eilish' },
+  { itunes_id: 1613725898, title: 'Mr. Morale & The Big Steppers', artist: 'Kendrick Lamar' },
+  { itunes_id: 1731426767, title: 'GNX', artist: 'Kendrick Lamar' },
+  { itunes_id: 1735624349, title: 'Brat', artist: 'Charli XCX' },
+]
+ 
+function ratioColor(r) {
+  if (!r) return 'var(--gray-text)'
+  if (r >= 90) return '#00B84D'
+  if (r >= 80) return '#FF9500'
+  return 'var(--pink)'
+}
+ 
+function AlbumsContent() {
+  const searchParams = useSearchParams()
+  const artistFilter = searchParams.get('artist')
+ 
+  const [albums, setAlbums] = useState([])
+  const [search, setSearch] = useState('')
+  const [iTunesResults, setITunesResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [loading, setLoading] = useState(true)
+ 
+  useEffect(() => {
+    fetchAlbums()
+  }, [])
+ 
+  async function fetchAlbums() {
+    setLoading(true)
+    const { data } = await supabase
+      .from('albums')
+      .select('*')
+      .order('banger_ratio', { ascending: false, nullsFirst: false })
+    setAlbums(data || [])
+    setLoading(false)
+  }
+ 
+  async function searchITunes(query) {
+    if (!query.trim()) { setITunesResults([]); return }
+    setSearching(true)
+    try {
+      const res = await fetch(
+        `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=album&limit=8`
+      )
+      const data = await res.json()
+      setITunesResults(data.results || [])
+    } catch { setITunesResults([]) }
+    setSearching(false)
+  }
+ 
+  function handleSearchChange(e) {
+    const val = e.target.value
+    setSearch(val)
+    if (val.length > 2) {
+      clearTimeout(window._searchTimer)
+      window._searchTimer = setTimeout(() => searchITunes(val), 400)
+    } else {
+      setITunesResults([])
+    }
+  }
+ 
+  const displayed = albums.filter(a => {
+    if (artistFilter) return a.artist_name?.toLowerCase().includes(artistFilter.toLowerCase())
+    return true
+  })
+ 
+  return (
+    <main className="section">
+      <div className="page-header">
+        <h1>{artistFilter ? `${artistFilter}'s Albums` : 'Browse Albums'}</h1>
+        <p>
+          {artistFilter
+            ? `Community ratings for ${artistFilter}.`
+            : 'Search any album, or browse community-rated releases below.'}
+        </p>
+      </div>
+ 
+      {/* iTunes Search */}
+      <div style={{ maxWidth: 540, margin: '0 auto 3rem', position: 'relative' }}>
+        <input
+          className="input"
+          placeholder="Search any album to rate it..."
+          value={search}
+          onChange={handleSearchChange}
+          style={{ paddingRight: '3rem' }}
+        />
+        {searching && (
+          <span style={{
+            position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)',
+            color: 'var(--gray-text)', fontSize: '0.8rem',
+          }}>
+            Searching...
+          </span>
+        )}
+ 
+        {/* iTunes search results dropdown */}
+        {iTunesResults.length > 0 && (
+          <div style={{
+            position: 'absolute', top: '110%', left: 0, right: 0,
+            background: 'white', border: '1px solid var(--border)',
+            borderRadius: '12px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)',
+            zIndex: 50, overflow: 'hidden',
+          }}>
+            {iTunesResults.map(album => (
+              <Link
+                key={album.collectionId}
+                href={`/album/${album.collectionId}`}
+                style={{ display: 'flex', gap: '0.75rem', padding: '0.75rem 1rem', alignItems: 'center' }}
+                onClick={() => { setSearch(''); setITunesResults([]) }}
+              >
+                {album.artworkUrl60 && (
+                  <img src={album.artworkUrl60} alt=""
+                    style={{ width: 40, height: 40, borderRadius: 6, flexShrink: 0 }} />
+                )}
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{album.collectionName}</div>
+                  <div style={{ color: 'var(--gray-text)', fontSize: '0.8rem' }}>{album.artistName}</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+ 
+      {/* Community Rated Albums */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h2 style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.3rem' }}>
+          Community Rated
+        </h2>
+        <p style={{ color: 'var(--gray-text)', fontSize: '0.9rem' }}>
+          Albums the community has already scored. Click any to rate or review.
+        </p>
+      </div>
+ 
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--gray-text)' }}>
+          Loading albums...
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+          gap: '1.5rem',
+        }}>
+          {/* Seed cards (link straight to album pages with iTunes IDs) */}
+          {displayed.length === 0 && SEED_ALBUMS.map(album => (
+            <Link key={album.itunes_id} href={`/album/${album.itunes_id}`}>
+              <div className="card" style={{ cursor: 'pointer' }}>
+                <div style={{
+                  width: '100%', aspectRatio: '1', background: '#f0f0f0', borderRadius: '10px',
+                  marginBottom: '1rem', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', fontSize: '2.5rem',
+                }}>
+                  🎵
+                </div>
+                <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
+                  {album.title}
+                </h3>
+                <p style={{ color: 'var(--gray-text)', fontSize: '0.82rem' }}>{album.artist}</p>
+                <p style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: 'var(--gray-text)' }}>
+                  Be the first to rate →
+                </p>
+              </div>
+            </Link>
+          ))}
+ 
+          {/* Real DB albums */}
+          {displayed.map(album => (
+            <Link key={album.id} href={`/album/${album.itunes_collection_id || album.id}`}>
+              <div className="card" style={{ cursor: 'pointer' }}>
+                {album.artwork_url ? (
+                  <img src={album.artwork_url} alt={album.name}
+                    style={{ width: '100%', aspectRatio: '1', objectFit: 'cover',
+                      borderRadius: '10px', marginBottom: '1rem' }} />
+                ) : (
+                  <div style={{
+                    width: '100%', aspectRatio: '1', background: '#f0f0f0', borderRadius: '10px',
+                    marginBottom: '1rem', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', fontSize: '2.5rem',
+                  }}>🎵</div>
+                )}
+                <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>
+                  {album.name || album.title}
+                </h3>
+                <p style={{ color: 'var(--gray-text)', fontSize: '0.82rem' }}>
+                  {album.artist_name || album.artist}
+                </p>
+                {album.banger_ratio != null && (
+                  <div style={{
+                    marginTop: '0.75rem', display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '0.75rem',
+                  }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--gray-text)' }}>Banger Ratio</span>
+                    <span style={{ fontWeight: 700, color: ratioColor(album.banger_ratio) }}>
+                      {album.banger_ratio}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </main>
+  )
+}
+ 
+export default function Albums() {
+  return (
+    <Suspense fallback={<div style={{ textAlign: 'center', padding: '6rem', color: 'var(--gray-text)' }}>Loading...</div>}>
+      <AlbumsContent />
+    </Suspense>
+  )
+}
+ 
+EOF
+ 
+FILE: src/app/artists/page.js
+Artist directory with 16 seeded artists, genre filter, and search. Clicking an artist takes you to /albums filtered for that artist. Ratios are editorial for now — they update organically as users rate.
+  Terminal command to replace artists page
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/artists
+cat << 'EOF' > src/app/artists/page.js
+'use client'
+import { useState } from 'react'
+import Link from 'next/link'
+ 
+// Seed artists — when user clicks, takes them to iTunes search for that artist's albums
+const FEATURED_ARTISTS = [
+  { name: 'Kendrick Lamar',   genre: 'Hip-Hop',      ratio: 91, albums: 6,  id: 368183298 },
+  { name: 'Frank Ocean',      genre: 'R&B/Soul',     ratio: 96, albums: 3,  id: 229667289 },
+  { name: 'Tyler, the Creator', genre: 'Hip-Hop',    ratio: 88, albums: 7,  id: 420368335 },
+  { name: 'Lana Del Rey',     genre: 'Indie Pop',    ratio: 84, albums: 8,  id: 464296584 },
+  { name: 'Kanye West',       genre: 'Hip-Hop',      ratio: 87, albums: 10, id: 2715720 },
+  { name: 'SZA',              genre: 'R&B',          ratio: 89, albums: 3,  id: 544338583 },
+  { name: 'The Weeknd',       genre: 'R&B/Pop',      ratio: 82, albums: 6,  id: 479756766 },
+  { name: 'Billie Eilish',    genre: 'Alt Pop',      ratio: 80, albums: 3,  id: 1065981054 },
+  { name: 'Childish Gambino', genre: 'Hip-Hop/R&B',  ratio: 86, albums: 6,  id: 275527903 },
+  { name: 'Fiona Apple',      genre: 'Art Rock',     ratio: 94, albums: 4,  id: 544783 },
+  { name: 'Mitski',           genre: 'Indie Rock',   ratio: 93, albums: 6,  id: 669703544 },
+  { name: 'JPEGMAFIA',        genre: 'Experimental', ratio: 88, albums: 7,  id: 1017053798 },
+  { name: 'Vampire Weekend',  genre: 'Indie Rock',   ratio: 85, albums: 4,  id: 241493580 },
+  { name: 'Charli XCX',       genre: 'Hyperpop',     ratio: 87, albums: 6,  id: 459668931 },
+  { name: 'Bad Bunny',        genre: 'Reggaeton',    ratio: 78, albums: 5,  id: 1126808565 },
+  { name: 'Chappell Roan',    genre: 'Pop',          ratio: 87, albums: 1,  id: 1705783258 },
+]
+ 
+const GENRES = ['All', 'Hip-Hop', 'R&B', 'Indie Rock', 'Pop', 'Experimental', 'Alt Pop']
+ 
+function ratioColor(r) {
+  if (r >= 90) return '#00B84D'
+  if (r >= 80) return '#FF9500'
+  return 'var(--pink)'
+}
+ 
+export default function Artists() {
+  const [search, setSearch] = useState('')
+  const [genre, setGenre] = useState('All')
+ 
+  const filtered = FEATURED_ARTISTS.filter(a => {
+    const matchSearch = a.name.toLowerCase().includes(search.toLowerCase())
+    const matchGenre = genre === 'All' || a.genre.includes(genre)
+    return matchSearch && matchGenre
+  }).sort((a, b) => b.ratio - a.ratio)
+ 
+  return (
+    <main className="section">
+      <div className="page-header">
+        <h1>Artists</h1>
+        <p>Browse artists ranked by community Banger Ratio.</p>
+      </div>
+ 
+      {/* Search + Filter */}
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2.5rem', flexWrap: 'wrap' }}>
+        <input
+          className="input"
+          placeholder="Search artists..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ maxWidth: 320 }}
+        />
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {GENRES.map(g => (
+            <button
+              key={g}
+              onClick={() => setGenre(g)}
+              style={{
+                padding: '0.45rem 1rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                background: genre === g ? 'var(--pink)' : 'white',
+                color: genre === g ? 'white' : 'var(--black)',
+                fontWeight: 600,
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
+      </div>
+ 
+      {/* Artist Grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+        gap: '1.5rem',
+      }}>
+        {filtered.map((artist, i) => (
+          <Link
+            key={artist.id}
+            href={`/albums?artist=${encodeURIComponent(artist.name)}&artistId=${artist.id}`}
+          >
+            <div className="card" style={{ cursor: 'pointer' }}>
+              {/* Avatar */}
+              <div style={{
+                width: 56, height: 56, borderRadius: '50%',
+                background: 'linear-gradient(135deg, var(--pink) 0%, #7B2FF7 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.4rem', fontWeight: 700, color: 'white',
+                marginBottom: '1rem', letterSpacing: 1,
+              }}>
+                {artist.name.charAt(0)}
+              </div>
+ 
+              <div style={{ marginBottom: '0.75rem' }}>
+                <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.2rem' }}>
+                  {artist.name}
+                </h3>
+                <p style={{ color: 'var(--gray-text)', fontSize: '0.82rem' }}>
+                  {artist.genre} · {artist.albums} albums
+                </p>
+              </div>
+ 
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                borderTop: '1px solid var(--border)', paddingTop: '0.75rem',
+              }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--gray-text)', fontWeight: 500 }}>
+                  Banger Ratio
+                </span>
+                <span style={{
+                  fontSize: '1.1rem', fontWeight: 700,
+                  color: ratioColor(artist.ratio),
+                }}>
+                  {artist.ratio}%
+                </span>
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+ 
+      {filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--gray-text)' }}>
+          No artists match your search.
+        </div>
+      )}
+    </main>
+  )
+}
+ 
+EOF
+ 
+FILE: src/app/releases/page.js
+Live iTunes top albums RSS feed. Genre filter tabs (All, Hip-Hop, R&B, Pop, Rock, Electronic, Alternative). No API key needed — iTunes RSS is free and public. Click any album to go rate it.
+  Terminal command to replace releases page
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/releases
+cat << 'EOF' > src/app/releases/page.js
+'use client'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+ 
+const GENRE_IDS = {
+  'All': '',
+  'Hip-Hop': '18',
+  'R&B': '15',
+  'Pop': '14',
+  'Rock': '21',
+  'Electronic': '7',
+  'Alternative': '20',
+}
+ 
+export default function Releases() {
+  const [albums, setAlbums] = useState([])
+  const [genre, setGenre] = useState('All')
+  const [loading, setLoading] = useState(true)
+ 
+  useEffect(() => {
+    fetchReleases(genre)
+  }, [genre])
+ 
+  async function fetchReleases(selectedGenre) {
+    setLoading(true)
+    try {
+      const genreId = GENRE_IDS[selectedGenre]
+      // iTunes RSS feed for new releases — no API key required
+      const url = genreId
+        ? `https://itunes.apple.com/us/rss/topalbums/limit=24/genre=${genreId}/json`
+        : `https://itunes.apple.com/us/rss/topalbums/limit=24/json`
+ 
+      const res = await fetch(url)
+      const data = await res.json()
+      const entries = data?.feed?.entry || []
+ 
+      const parsed = entries.map(e => ({
+        id: e.id?.attributes?.['im:id'],
+        title: e['im:name']?.label,
+        artist: e['im:artist']?.label,
+        artwork: e['im:image']?.[2]?.label?.replace('170x170', '300x300'),
+        genre: e.category?.attributes?.label,
+        price: e['im:price']?.label,
+        releaseDate: e['im:releaseDate']?.label,
+      }))
+ 
+      setAlbums(parsed.filter(a => a.id && a.title))
+    } catch {
+      setAlbums([])
+    }
+    setLoading(false)
+  }
+ 
+  return (
+    <main className="section">
+      <div className="page-header">
+        <h1>New Releases</h1>
+        <p>Top albums right now — click any to rate it and calculate the Banger Ratio.</p>
+      </div>
+ 
+      {/* Genre Filter */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+        {Object.keys(GENRE_IDS).map(g => (
+          <button
+            key={g}
+            onClick={() => setGenre(g)}
+            style={{
+              padding: '0.45rem 1.1rem', borderRadius: '8px',
+              border: '1px solid var(--border)',
+              background: genre === g ? 'var(--pink)' : 'white',
+              color: genre === g ? 'white' : 'var(--black)',
+              fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            {g}
+          </button>
+        ))}
+      </div>
+ 
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '5rem', color: 'var(--gray-text)' }}>
+          Loading releases...
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+          gap: '1.5rem',
+        }}>
+          {albums.map(album => (
+            <Link key={album.id} href={`/album/${album.id}`}>
+              <div className="card" style={{ padding: '0', overflow: 'hidden', cursor: 'pointer' }}>
+                <div style={{ position: 'relative' }}>
+                  {album.artwork ? (
+                    <img src={album.artwork} alt={album.title}
+                      style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
+                  ) : (
+                    <div style={{
+                      width: '100%', aspectRatio: '1', background: '#f0f0f0',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem',
+                    }}>🎵</div>
+                  )}
+                  <div style={{
+                    position: 'absolute', bottom: '0.6rem', right: '0.6rem',
+                    background: 'var(--pink)', color: 'white', borderRadius: '6px',
+                    padding: '3px 8px', fontSize: '0.7rem', fontWeight: 700,
+                  }}>
+                    RATE IT
+                  </div>
+                </div>
+                <div style={{ padding: '0.9rem 1rem' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {album.title}
+                  </h3>
+                  <p style={{ color: 'var(--gray-text)', fontSize: '0.8rem',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {album.artist}
+                  </p>
+                  {album.genre && (
+                    <p style={{ fontSize: '0.7rem', color: 'var(--gray-text)', marginTop: '0.4rem' }}>
+                      {album.genre}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+ 
+      {!loading && albums.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--gray-text)' }}>
+          No releases found for this genre right now.
+        </div>
+      )}
+    </main>
+  )
+}
+ 
+EOF
+ 
+FILE: src/app/about/page.js
+Explains what Banger Ratios is, how the formula works, and the rating scale (1=Awful through 7=Perfect). Anything 5+ is a Banger.
+  Terminal command to replace about page
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/about
+cat << 'EOF' > src/app/about/page.js
+export default function About() {
+  const features = [
+    { icon: '🎵', title: 'Track-by-Track Ratings', desc: 'Every song on an album gets rated 1–7. No average-album-score nonsense.' },
+    { icon: '🔥', title: 'The Banger Ratio', desc: 'Percentage of tracks rated 5 or above. Simple, community-driven, honest.' },
+    { icon: '🏆', title: 'Real Rankings', desc: 'Our leaderboard reflects replay value — not Spotify streams or promo budgets.' },
+    { icon: '👥', title: 'Community-Powered', desc: 'Every rating from every user feeds into one shared score. Democracy in action.' },
+  ]
+ 
+  return (
+    <main className="section">
+      <div className="page-header">
+        <h1>About Banger Ratios</h1>
+        <p>Redefining how we measure music quality.</p>
+      </div>
+ 
+      {/* Hero Statement */}
+      <div style={{
+        maxWidth: 720, margin: '0 auto 4rem',
+        background: 'white', borderRadius: '20px',
+        border: '1px solid var(--border)', padding: '3rem',
+        textAlign: 'center',
+      }}>
+        <p style={{ fontSize: '1.4rem', fontWeight: 600, lineHeight: 1.6, marginBottom: '1.5rem' }}>
+          Streaming numbers reward{' '}
+          <span style={{ color: 'var(--pink)' }}>popularity</span>,
+          {' '}not{' '}
+          <span style={{ color: 'var(--pink)' }}>replay value</span>.
+        </p>
+        <p style={{ color: 'var(--gray-text)', lineHeight: 1.8 }}>
+          The Banger Ratio strips away marketing, hype, and algorithmic boosts.
+          It asks one simple question: <strong>how many tracks on this album are actually worth replaying?</strong>
+        </p>
+      </div>
+ 
+      {/* How it Works */}
+      <div style={{ marginBottom: '5rem' }}>
+        <h2 style={{ textAlign: 'center', fontWeight: 700, fontSize: '1.6rem', marginBottom: '2.5rem' }}>
+          How It Works
+        </h2>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem',
+        }}>
+          {features.map((f, i) => (
+            <div key={i} className="card">
+              <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>{f.icon}</div>
+              <h3 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>{f.title}</h3>
+              <p style={{ color: 'var(--gray-text)', lineHeight: 1.6, fontSize: '0.92rem' }}>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+ 
+      {/* Rating Scale */}
+      <div style={{ maxWidth: 680, margin: '0 auto 5rem', background: 'white', borderRadius: '20px',
+        border: '1px solid var(--border)', padding: '2.5rem' }}>
+        <h2 style={{ fontWeight: 700, marginBottom: '1.5rem', fontSize: '1.3rem' }}>The Rating Scale</h2>
+        {[
+          [7, 'Perfect', 'Would listen on repeat for a week'],
+          [6, 'Great', 'Skip nothing — this one delivers'],
+          [5, 'Good', 'Solid track, plays well in context'],
+          [4, 'OK', 'Wouldn\'t skip, wouldn\'t seek out'],
+          [3, 'Meh', 'Probably skip on a second listen'],
+          [2, 'Bad', 'Drags the album down'],
+          [1, 'Awful', 'Shouldn\'t exist'],
+        ].map(([score, label, desc]) => (
+          <div key={score} style={{
+            display: 'flex', alignItems: 'center', gap: '1rem',
+            padding: '0.8rem 0', borderBottom: score > 1 ? '1px solid var(--border)' : 'none',
+          }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: '8px', flexShrink: 0,
+              background: score >= 5 ? 'var(--pink)' : 'var(--bg-soft)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 700, color: score >= 5 ? 'white' : 'var(--black)',
+            }}>
+              {score}
+            </div>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{label}</span>
+              <span style={{ color: 'var(--gray-text)', fontSize: '0.82rem', marginLeft: '0.5rem' }}>
+                — {desc}
+              </span>
+            </div>
+          </div>
+        ))}
+        <p style={{ marginTop: '1.5rem', color: 'var(--gray-text)', fontSize: '0.85rem', lineHeight: 1.6 }}>
+          <strong>Banger</strong> = rated 5 or higher. The Banger Ratio is simply: bangers ÷ total tracks × 100.
+          An album needs at least 3 ratings per track to appear on the leaderboard.
+        </p>
+      </div>
+    </main>
+  )
+}
+ 
+EOF
+ 
+Test Batch 3
+  Terminal
+cd ~/Desktop/banger-ratios
+npm run build
+# Check for errors. Then:
+npm run dev
+ 
+•	localhost:3000/leaderboards — should show curated top-10 with gold podium, not blank
+•	localhost:3000/albums — type "Kendrick" in the search, does a dropdown appear?
+•	localhost:3000/artists — 16 artists with genre filter buttons?
+•	localhost:3000/releases — album grid from iTunes RSS?
+•	localhost:3000/about — rating scale table at the bottom?
+  Push Batch 3:
+git add .
+git commit -m "batch 3: leaderboard seed, albums search, artists, releases, about"
+git push
+ 
+SECTION 7: Album Rating Page — Keep It As Is
+Good news: Your existing src/app/album/[id]/page.js is the most complete and correctly working file on the whole site. It pulls album data from iTunes, saves tracks to Supabase, shows rating buttons 1-7 for each track, and calls recalculate_banger_ratio when you submit. Do NOT replace this file.
+The only reason it may not have been working is because the Supabase database was missing columns (fixed in Section 1) and the recalculate_banger_ratio function didn't exist (also fixed in Section 1 Block 6).
+✓  After you run the SQL from Section 1, the album rating page will work automatically without any code changes.
+To verify it works:
+•	Make sure you are signed in (go to /auth and sign in)
+•	Go to localhost:3000/albums and search for any album
+•	Click on an album from the dropdown
+•	You should see the album artwork, track list with 1-7 buttons
+•	Rate a few tracks, click the pink Submit button at the bottom
+•	The Banger Ratio % in the header should update
+•	Go to localhost:3000/profile — your ratings should appear there now
+SECTION 8: Vercel Environment Variables
+Your site works locally but may break on Vercel if the environment variables aren't set there too. The .env.local file only works on your Mac — Vercel needs its own copy of the keys.
+How to add keys to Vercel
+12.	Go to vercel.com and log in
+13.	Click your banger-ratios project
+14.	Click Settings in the top navigation
+15.	Click Environment Variables in the left sidebar
+16.	Add this variable:
+Name	Value
+NEXT_PUBLIC_SUPABASE_URL	https://vqtftxerpwpixhmpowvx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY	eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxdGZ0eGVycHdwaXhobXBvd3Z4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3OTM0NjIsImV4cCI6MjA4NzM2OTQ2Mn0.u17SmE31dhe3LtBvY0l5cO_noWnyLBtKot7c7G8botg
+17.	For each variable, make sure all 3 checkboxes are checked: Production, Preview, Development
+18.	Click Save
+19.	Go to Deployments tab → click the three dots on the latest deploy → Redeploy
+⚠  After adding environment variables in Vercel you MUST redeploy. The env vars only apply to new builds, not the existing live site.
+✓  Once redeployed, www.bangerratios.com will be connected to your Supabase database.
+SECTION 9: Quick Reference Cheat Sheet
+Your Project Info
+Item	Value
+Local project folder	~/Desktop/banger-ratios
+GitHub repo	github.com/jamestfilmer-ops/banger-ratios
+Live URL	www.bangerratios.com
+Local test URL	http://localhost:3000
+Supabase URL	https://vqtftxerpwpixhmpowvx.supabase.co
+Supabase dashboard	supabase.com → your project → SQL Editor / Table Editor
+Vercel dashboard	vercel.com → banger-ratios project
+Terminal Commands You Will Use Every Day
+Command	What it does
+cd ~/Desktop/banger-ratios	Navigate to your project (do this FIRST every time)
+npm run dev	Start local server at localhost:3000
+npm run build	Test for errors before pushing (must pass before every push)
+git add .	Stage all changed files
+git commit -m "message"	Save your changes with a description
+git push	Push to GitHub → Vercel auto-deploys in ~60 seconds
+rm -rf .next	Clear the build cache (run before npm run dev if you see weird errors)
+cat src/app/page.js	Print a file to check its contents
+git status	See which files have been changed
+git log --oneline	See your recent commits
+What to Do When Things Break
+Problem	Solution
+Red error in terminal: Module not found	A file is importing something that doesn't exist. Check the error — it shows which file and which import. Most common: src/lib/supabase.js is missing.
+@import must precede all rules error	globals.css has @import "tailwindcss" in the wrong place. It must be the very first line.
+Profile page shows Loading... forever	You're not logged in. Go to /auth and sign in first. OR the profiles table is missing columns — re-run SQL Block 5.
+Stat counters show — (dashes)	Supabase connection is failing. Check .env.local has the correct URL and key.
+Sign in does nothing	Either the auth page file is old, or you haven't confirmed your email. Check your inbox for a Supabase confirmation email.
+Vercel builds but site is broken	Vercel env vars are missing. Go to Vercel → Settings → Environment Variables and add both keys.
+git push rejected	Run git pull first to get any remote changes, then push again.
+The Order That Always Works
+20.	cd ~/Desktop/banger-ratios
+21.	Make your code changes (update files)
+22.	npm run dev → test at localhost:3000
+23.	npm run build → confirm no errors
+24.	git add .
+25.	git commit -m "describe the change"
+26.	git push
+27.	Wait ~60 seconds → check www.bangerratios.com
+
+
+BANGER RATIOS · BR DEP VII · jamestfilmer-ops · bangerratios.com

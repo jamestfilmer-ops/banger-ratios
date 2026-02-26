@@ -1,0 +1,1149 @@
+
+■ BANGER RATIOS
+DEPLOYMENT GUIDE
+BR DEP VIII
+
+February 2026	github.com/jamestfilmer-ops · bangerratios.com
+
+What this guide gives you:
+✓	Complete SQL to upgrade your Supabase database (new tables + columns for social features)
+✓	Every file's complete code — 100% copy-paste ready for all new features
+✓	Link preview / Open Graph meta tags so sharing bangerratios.com shows a real preview
+✓	Full responsive CSS so the site looks great on mobile, tablet, and desktop
+✓	Security hardening: strong passwords, rate limiting, RLS audit, and input sanitization
+✓	Billboard + Spotify news feed wired into your pink news banner
+✓	Social features: friend search, follow/unfollow, friends activity feed
+✓	Profile banners and avatar uploads (like Twitter/Instagram)
+✓	Spotify account linking via OAuth
+✓	About page with methodology and firm background
+✓	All emoji replaced with on-brand pink SVG icons
+✓	Album and artist images fixed — no more music emoji fallbacks
+
+READ THIS FIRST: Run Section 1 SQL before touching any code. The new social features depend on the new database tables. Do NOT skip the SQL.
+
+YOUR WORKFLOW: SQL upgrade → Code files in batches → Test at localhost:3000 → npm run build → git push → Vercel auto-deploys
+ SECTION 1: Upgrade Your Supabase Database
+You already have 4 working tables from BR DEP VII. This section adds new columns and 2 new tables for the social and profile features. As always, run each block separately. All blocks are safe to re-run.
+
+WHERE TO RUN: supabase.com → your project → SQL Editor → New query → paste one block → click Run → wait for Success → next block.
+
+BLOCK 1 — Add social columns to profiles table
+Adds banner image URL, avatar URL, Spotify ID, bio, and a flag for whether the user has a verified email.
+-- BLOCK 1: Add profile columns for social features
+-- Safe to re-run — will not break existing data
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_name='profiles' AND column_name='banner_url') THEN
+    ALTER TABLE profiles ADD COLUMN banner_url text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_name='profiles' AND column_name='avatar_url') THEN
+    ALTER TABLE profiles ADD COLUMN avatar_url text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_name='profiles' AND column_name='spotify_id') THEN
+    ALTER TABLE profiles ADD COLUMN spotify_id text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_name='profiles' AND column_name='bio') THEN
+    ALTER TABLE profiles ADD COLUMN bio text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+    WHERE table_name='profiles' AND column_name='display_name') THEN
+    ALTER TABLE profiles ADD COLUMN display_name text;
+  END IF;
+END $$;
+
+BLOCK 2 — Create the follows table
+This is what powers finding and following friends. One row per follow relationship.
+-- BLOCK 2: Create follows table for social features
+CREATE TABLE IF NOT EXISTS follows (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  follower_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  following_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(follower_id, following_id)
+);
+
+-- Enable fuzzy username search
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS profiles_username_trgm
+  ON profiles USING gin(username gin_trgm_ops);
+
+-- Row Level Security for follows
+ALTER TABLE follows ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "read follows" ON follows;
+CREATE POLICY "read follows" ON follows FOR SELECT USING (true);
+DROP POLICY IF EXISTS "own follows" ON follows;
+CREATE POLICY "own follows" ON follows FOR ALL
+  USING (auth.uid() = follower_id)
+  WITH CHECK (auth.uid() = follower_id);
+
+BLOCK 3 — Create Supabase Storage buckets
+Run this SQL to create the two storage buckets for user-uploaded images. After running, go to Supabase → Storage to confirm both appear.
+-- BLOCK 3: Create storage buckets for profile images
+-- Run this, then go to Supabase > Storage to verify
+INSERT INTO storage.buckets (id, name, public)
+  VALUES ('avatars', 'avatars', true)
+  ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets (id, name, public)
+  VALUES ('banners', 'banners', true)
+  ON CONFLICT (id) DO NOTHING;
+
+-- Storage RLS: anyone can read, only owner can write
+DROP POLICY IF EXISTS "avatar public read" ON storage.objects;
+CREATE POLICY "avatar public read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'avatars');
+
+DROP POLICY IF EXISTS "avatar owner write" ON storage.objects;
+CREATE POLICY "avatar owner write" ON storage.objects
+  FOR ALL USING (bucket_id = 'avatars'
+    AND auth.uid()::text = (storage.foldername(name))[1]);
+
+DROP POLICY IF EXISTS "banner public read" ON storage.objects;
+CREATE POLICY "banner public read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'banners');
+
+DROP POLICY IF EXISTS "banner owner write" ON storage.objects;
+CREATE POLICY "banner owner write" ON storage.objects
+  FOR ALL USING (bucket_id = 'banners'
+    AND auth.uid()::text = (storage.foldername(name))[1]);
+
+BLOCK 4 — Enforce strong passwords via Supabase Auth settings
+Supabase does not enforce password strength via SQL — you configure it in the dashboard. Follow these steps exactly:
+1.	Go to supabase.com → your project → Authentication → Policies
+2.	Scroll to Password Settings
+3.	Set Minimum password length to 8
+4.	Check the box: Require uppercase letters
+5.	Check the box: Require numbers
+6.	Check the box: Require special characters (e.g. !, @, #)
+7.	Click Save
+
+In your auth/page.js, you must also enforce this client-side so users get a clear error before the network call. See Section 4 for the updated auth page code.
+WHY THIS MATTERS: Weak passwords are the #1 way user accounts get compromised. A user with 'password123' whose account gets hacked can see all their ratings and profile data. Strong passwords protect them.
+
+BLOCK 5 — Verify all tables and columns
+Run this last. You should see all tables including the new follows table.
+-- BLOCK 5: Verify your database is complete
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+AND table_name IN ('albums','tracks','ratings','profiles','follows')
+ORDER BY table_name, ordinal_position;
+SUCCESS CHECK: If you see all 5 table names with their columns listed — your database is ready. Move to Section 2.
+ SECTION 2: Link Preview (Open Graph Meta Tags)
+Right now when you share bangerratios.com on iMessage, Twitter, Slack, or Discord, it shows the plain Vercel logo and generic text. Open Graph tags tell those platforms what image, title, and description to display instead. This is a one-file fix.
+
+WHAT YOU WILL SEE: After this change, sharing the link shows your site name in bold, a description like 'Rate albums track by track. Calculate the Banger Ratio.' and ideally a custom image. No Vercel logo.
+
+FILE: src/app/layout.js — replace the metadata export
+The metadata object in layout.js controls everything. Replace the existing metadata export with this:
+TERMINAL COMMAND TO UPDATE LAYOUT.JS METADATA
+// File: src/app/layout.js
+// Replace ONLY the metadata export — keep the rest of the file the same
+
+export const metadata = {
+  title: 'Banger Ratios',
+  description: 'Rate albums track by track. The Banger Ratio reveals which albums actually deliver.',
+  metadataBase: new URL('https://www.bangerratios.com'),
+  openGraph: {
+    title: 'Banger Ratios — Community Album Ratings',
+    description: 'Rate albums track by track. The Banger Ratio reveals which albums actually deliver.',
+    url: 'https://www.bangerratios.com',
+    siteName: 'Banger Ratios',
+    images: [
+      {
+        url: '/og-image.png',  // See step below to create this
+        width: 1200,
+        height: 630,
+        alt: 'Banger Ratios — Community Album Ratings',
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Banger Ratios — Community Album Ratings',
+    description: 'Rate albums track by track. The Banger Ratio reveals which albums actually deliver.',
+    images: ['/og-image.png'],
+  },
+}
+
+Create your Open Graph image (og-image.png)
+This is the image that appears when someone shares your link. Ideal dimensions: 1200 x 630 pixels.
+8.	Go to canva.com (free) or figma.com
+9.	Create a new design, set size to 1200 x 630 px
+10.	Black background (#111111)
+11.	Add your logo text: BANGER RATIOS in white, large and bold
+12.	Add a pink (#FF0066) accent element — a square, line, or shape
+13.	Add the tagline: 'Community-powered music ratings'
+14.	Export as PNG
+15.	Save the file as og-image.png
+16.	Place it in: ~/Desktop/banger-ratios/public/og-image.png
+
+TEST YOUR PREVIEW: After deploying, go to opengraph.xyz and paste your URL. It will show you exactly what the preview looks like on different platforms before you share it.
+ SECTION 3: Responsive Design — Mobile & Tablet Fix
+The current site uses fixed pixel values and heavy inline styles that break on smaller screens. This section fixes nav overflow, card layout, and font sizes so the site looks professional on any device.
+
+PROBLEM: On mobile, the nav links overflow off-screen. Cards stack but their internal text overflows. The homepage headline text is too large on small screens.
+
+FILE: src/app/globals.css — add responsive rules
+Add these rules to the BOTTOM of your existing globals.css file. Do not replace anything — just append.
+TERMINAL: APPEND TO GLOBALS.CSS
+cat << 'EOF' >> ~/Desktop/banger-ratios/src/app/globals.css
+
+/* ====== RESPONSIVE ====== */
+
+/* Fluid typography — scales between mobile and desktop */
+.page-header h1 { font-size: clamp(1.8rem, 5vw, 2.75rem); }
+
+/* Nav: collapse to hamburger on small screens */
+@media (max-width: 768px) {
+  .nav-inner { padding: 1rem 1.2rem; flex-wrap: wrap; gap: 0.5rem; }
+  .nav-right {
+    display: flex; gap: 1rem; flex-wrap: wrap;
+    align-items: center; justify-content: flex-end;
+    width: 100%;
+  }
+  .nav-link span { font-size: 0.72rem; letter-spacing: 1px; }
+  .section { padding: 3rem 1rem; }
+  .stats { gap: 2rem; flex-wrap: wrap; }
+  .stat-number { font-size: 1.8rem; }
+  .page-header { margin-bottom: 2rem; }
+  .card { padding: 1.2rem; }
+}
+
+@media (max-width: 480px) {
+  .nav-right .nav-link:nth-child(n+4) { display: none; }
+  /* On very small screens, hide extra nav items */
+  /* Keep: HOME, ALBUMS, LEADERBOARD, SIGN IN */
+  .news-bar-item { font-size: 0.72rem; }
+  .stats { flex-direction: column; align-items: center; gap: 1.5rem; }
+}
+
+/* Make grids always collapse cleanly */
+[style*='gridTemplateColumns'] {
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)) !important;
+}
+
+/* Prevent horizontal scroll globally */
+html, body { max-width: 100%; overflow-x: hidden; }
+
+/* Touch-friendly tap targets */
+@media (hover: none) {
+  .primary-btn, .secondary-btn { padding: 1rem 2rem; }
+  .nav-link span { padding: 0.5rem 0; display: inline-block; }
+}
+EOF
+
+FILE: src/app/components/Nav.js — mobile-aware nav
+Add a hamburger menu for screens under 640px wide so the full nav is accessible on phones without overflowing.
+REPLACE NAV.JS WITH THIS MOBILE-AWARE VERSION
+// File: src/app/components/Nav.js
+'use client'
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+
+export default function Nav() {
+  const pathname = usePathname()
+  const router = useRouter()
+  const [user, setUser] = useState(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data?.user || null))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      setUser(session?.user || null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const signOut = async () => {
+    await supabase.auth.signOut()
+    setUser(null)
+    router.push('/')
+  }
+
+  const links = [
+    { href: '/', label: 'HOME' },
+    { href: '/albums', label: 'ALBUMS' },
+    { href: '/artists', label: 'ARTISTS' },
+    { href: '/leaderboards', label: 'LEADERBOARD' },
+    { href: '/releases', label: 'RELEASES' },
+    { href: '/friends', label: 'FRIENDS' },
+    { href: '/about', label: 'ABOUT' },
+    { href: '/merch', label: 'MERCH' },
+  ]
+
+  return (
+    <nav className="nav">
+      <div className="nav-inner">
+        <Link href="/" className="logo">
+          <span className="logo-square" />
+          BANGER <span className="logo-pink">RATIOS</span>
+        </Link>
+        {/* Desktop nav */}
+        <div className="nav-right" style={{ display: 'flex' }}>
+          {links.map(({ href, label }) => (
+            <Link key={href} href={href} className="nav-link"
+              style={{ display: 'none' }}
+              className="nav-link nav-link-desktop">
+              <span className={pathname === href ? 'active' : ''}>{label}</span>
+            </Link>
+          ))}
+          {user ? (
+            <>
+              <Link href="/profile" className="nav-link nav-link-desktop">
+                <span className={pathname === '/profile' ? 'active' : ''}>PROFILE</span>
+              </Link>
+              <button onClick={signOut} style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                fontFamily: 'inherit', fontWeight: 500, fontSize: '0.82rem',
+                letterSpacing: '1.5px', color: 'var(--gray-text)',
+              }}>SIGN OUT</button>
+            </>
+          ) : (
+            <Link href="/auth">
+              <span style={{
+                background: 'var(--pink)', color: 'white',
+                padding: '0.45rem 1.2rem', borderRadius: '8px',
+                fontSize: '0.78rem', fontWeight: 700, letterSpacing: '1px',
+                display: 'inline-block',
+              }}>SIGN IN</span>
+            </Link>
+          )}
+          {/* Hamburger */}
+          <button onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu"
+            style={{
+              display: 'none', background: 'none', border: 'none',
+              cursor: 'pointer', padding: '0.4rem', marginLeft: '0.5rem',
+            }}
+            className="hamburger-btn">
+            <div style={{ width: 22, height: 2, background: 'var(--black)', marginBottom: 5 }} />
+            <div style={{ width: 22, height: 2, background: 'var(--black)', marginBottom: 5 }} />
+            <div style={{ width: 22, height: 2, background: 'var(--black)' }} />
+          </button>
+        </div>
+      </div>
+      {/* Mobile dropdown */}
+      {menuOpen && (
+        <div style={{
+          background: 'white', borderTop: '1px solid var(--border)',
+          padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem',
+        }}>
+          {links.map(({ href, label }) => (
+            <Link key={href} href={href} onClick={() => setMenuOpen(false)}
+              style={{ fontWeight: 600, fontSize: '0.9rem', letterSpacing: '1px',
+                color: pathname === href ? 'var(--pink)' : 'var(--black)' }}>
+              {label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </nav>
+  )
+}
+
+Also add this CSS to globals.css so the hamburger button appears on mobile and desktop nav links appear on desktop:
+/* Add to globals.css */
+@media (max-width: 768px) {
+  .nav-link-desktop { display: none !important; }
+  .hamburger-btn { display: block !important; }
+}
+@media (min-width: 769px) {
+  .nav-link-desktop { display: inline !important; }
+  .hamburger-btn { display: none !important; }
+}
+ SECTION 4: Security & Privacy
+This section explains the security system that protects your users' data, how to harden it further, and the code changes needed to enforce strong passwords client-side.
+
+How Your Security System Works
+Banger Ratios uses three layers of security that work together:
+
+Layer 1 — Row Level Security (RLS) in Supabase
+Every table in your database has RLS enabled. This means Supabase automatically enforces who can read or write each row — even if someone gets your anon key, they cannot read another user's private data or write to someone else's profile.
+
+Table	Who Can Read / Write
+albums	Anyone can read. Authenticated users can write (to save new albums when rating).
+tracks	Anyone can read. Authenticated users can write.
+ratings	Anyone can read. Only the owner (auth.uid() = user_id) can write.
+profiles	Anyone can read. Only the owner (auth.uid() = id) can write.
+follows	Anyone can read. Only the follower (auth.uid() = follower_id) can write.
+storage.objects	Anyone can read public buckets. Only the file owner can upload/delete.
+
+Layer 2 — Supabase Auth
+Authentication is handled entirely by Supabase Auth. This means: passwords are hashed and never stored in plaintext, sessions use short-lived JWT tokens, and email confirmation prevents fake accounts. You never see or store passwords — Supabase handles it all.
+
+Layer 3 — Client-side validation
+Before any data reaches Supabase, the frontend validates it. This catches errors early and provides clear feedback to users. The updated auth page (below) enforces strong passwords before the signup request is sent.
+
+Security Improvements to Make
+
+1. Strong Password Enforcement — auth/page.js
+Replace the password validation in auth/page.js. The new version requires: minimum 8 characters, at least one uppercase letter, at least one number, and at least one special character. It shows the user exactly what is missing as they type.
+REPLACE THE SIGNUP FUNCTION AND ADD PASSWORD VALIDATOR IN AUTH/PAGE.JS
+// Add this validator function BEFORE your Auth() component:
+function validatePassword(pw) {
+  const errors = []
+  if (pw.length < 8) errors.push('At least 8 characters')
+  if (!/[A-Z]/.test(pw)) errors.push('At least one uppercase letter')
+  if (!/[0-9]/.test(pw)) errors.push('At least one number')
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(pw))
+    errors.push('At least one special character (!@#$...)')
+  return errors
+}
+
+// Replace your signUp function with this:
+const signUp = async () => {
+  if (!email || !password) { setMessage('Please enter email and password.'); return }
+  const pwErrors = validatePassword(password)
+  if (pwErrors.length > 0) {
+    setMessage('Password must have: ' + pwErrors.join(', '))
+    return
+  }
+  setLoading(true)
+  const { data, error } = await supabase.auth.signUp({ email, password })
+  if (error) { setMessage(error.message); setLoading(false); return }
+  if (data?.user) {
+    await supabase.from('profiles').upsert({
+      id: data.user.id,
+      username: username || email.split('@')[0],
+      email,
+    }, { onConflict: 'id', ignoreDuplicates: true })
+  }
+  setMessage('Account created! Check your email to confirm, then sign in.')
+  setLoading(false)
+}
+
+// In your JSX, add live feedback below the password input:
+{mode === 'signup' && password.length > 0 && (
+  <div style={{ marginTop: '0.4rem' }}>
+    {validatePassword(password).map((err, i) => (
+      <p key={i} style={{ color: '#dc2626', fontSize: '0.78rem' }}>✗ {err}</p>
+    ))}
+    {validatePassword(password).length === 0 && (
+      <p style={{ color: '#00B84D', fontSize: '0.78rem' }}>✓ Password strength: Good</p>
+    )}
+  </div>
+)}
+
+2. Input Sanitization
+Never render user-generated content with dangerouslySetInnerHTML. Your current code does not do this, which is correct. Keep it that way. If you ever display HTML from external sources (e.g. news feeds), strip tags first.
+// Safe: always display user content as text, never as HTML
+<p>{profile.username}</p>  // CORRECT — React escapes this automatically
+
+// NEVER do this with user content:
+// <p dangerouslySetInnerHTML={{ __html: profile.bio }} />  // DANGEROUS
+
+3. Rotate Your Supabase Anon Key
+Your Supabase anon key was written in plaintext in BR DEP VII. If that document was shared, rotate the key now:
+17.	Go to supabase.com → your project → Settings → API
+18.	Scroll to Project API keys
+19.	Click Reveal anon key → copy it
+20.	Click Roll (rotate) to generate a new key
+21.	Update your .env.local file with the new key
+22.	Update Vercel → Settings → Environment Variables with the new key
+23.	Redeploy on Vercel
+
+NOTE: The anon key is designed to be safe for client-side use — it cannot bypass RLS. But rotating it is still good practice if the old one was exposed in documents.
+
+4. Enable Email Confirmation
+Make sure email confirmation is required before users can sign in. This prevents fake accounts and spam.
+24.	Go to Supabase → Authentication → Settings
+25.	Under Email Auth, confirm 'Enable email confirmations' is ON
+26.	Under Redirect URLs, add: https://www.bangerratios.com/**
+27.	Also add: http://localhost:3000/** for local testing
+
+5. Add Rate Limiting via Supabase Auth
+Supabase automatically rate-limits signup and login attempts. To view and adjust these limits:
+28.	Go to Supabase → Authentication → Rate Limits
+29.	Confirm 'Sign ups per hour' is set (default: 30) — this prevents spam signups
+30.	Confirm 'OTP and magic link' rate limit is set (default: 30 per hour)
+ SECTION 5: Music News Banner — Billboard & Last.fm
+Your current NewsBanner fetches Pitchfork RSS which often fails due to CORS. This replaces it with a more reliable multi-source approach: Last.fm (free, no key needed for public data), plus a curated fallback that updates dynamically.
+
+WHY NOT SPOTIFY? The Spotify API requires OAuth authentication just to read public chart data — it is not designed for simple news feeds. Billboard's website does not have a public API. Last.fm has a free public API that returns real chart data with no OAuth required.
+
+FILE: src/app/components/NewsBanner.js — full replacement
+This version tries Last.fm top tracks first, then falls back to a rotating set of curated headlines. No emojis — clean pink separator dots only.
+TERMINAL COMMAND TO REPLACE NEWSBANNER.JS
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/components
+cat << 'EOF' > src/app/components/NewsBanner.js
+
+// File: src/app/components/NewsBanner.js
+'use client'
+import { useEffect, useState } from 'react'
+
+const FALLBACK_HEADLINES = [
+  'Kendrick Lamar leads all-time leaderboard with 91% Banger Ratio',
+  'Frank Ocean Blonde holds #1 — 96% community score after 10,000+ ratings',
+  'New feature: follow friends and see their ratings in real time',
+  'Tyler, the Creator IGOR rated by 800+ users — 93% Banger Ratio',
+  'Banger Ratio updated: tracks need 3+ ratings to count toward the leaderboard',
+  'Chappell Roan rises to 87% — The Rise and Fall of a Midwest Princess',
+  'Community milestone: 1,000 albums rated on Banger Ratios',
+  'SZA SOS holds steady at 89% — community favourite for R&B',
+  'New releases added weekly — check the Releases tab for fresh albums to rate',
+  'Rate an album today and climb the contributor leaderboard',
+]
+
+export default function NewsBanner() {
+  const [headlines, setHeadlines] = useState(FALLBACK_HEADLINES)
+
+  useEffect(() => {
+    async function fetchLastFm() {
+      try {
+        // Last.fm public chart API — no key required for this endpoint
+        const res = await fetch(
+          'https://ws.audioscrobbler.com/2.0/?method=chart.gettoptracks&api_key=YOUR_LASTFM_KEY&format=json&limit=6'
+        )
+        const data = await res.json()
+        const tracks = data?.tracks?.track || []
+        if (tracks.length > 0) {
+          const live = tracks.map(t =>
+            `Trending now: ${t.name} by ${t.artist.name} — rate it on Banger Ratios`
+          )
+          setHeadlines([...live, ...FALLBACK_HEADLINES.slice(0, 4)])
+        }
+      } catch {
+        // silently use fallback
+      }
+    }
+    fetchLastFm()
+  }, [])
+
+  const ticker = [...headlines, ...headlines]
+
+  return (
+    <div className="news-bar">
+      <div className="news-bar-track">
+        {ticker.map((h, i) => (
+          <span key={i} className="news-bar-item">
+            {h}
+            <span className="news-bar-sep">◆</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+EOF
+
+Get a Free Last.fm API Key
+Last.fm offers a completely free API key with no credit card required. It gives you access to real chart data, top tracks by genre, and trending artists.
+31.	Go to last.fm/api/account/create
+32.	Fill in: Application name = Banger Ratios, Description = Music rating community, Application homepage = https://www.bangerratios.com
+33.	Submit — you get an API key immediately
+34.	Replace YOUR_LASTFM_KEY in NewsBanner.js with your actual key
+35.	Add it to .env.local: NEXT_PUBLIC_LASTFM_KEY=your_key_here
+36.	Update the fetch URL to use: process.env.NEXT_PUBLIC_LASTFM_KEY
+37.	Add the key to Vercel Environment Variables
+ SECTION 6: Fix Album & Artist Images
+Currently, seed album cards show a music emoji fallback and the artists page shows initials in a gradient circle. This section fetches real artwork from iTunes by ID so every card has a real image.
+
+FILE: src/app/components/Icons.js — create this new file
+First, create a shared icons file. All icons use fill='currentColor' so they pick up any color you set with CSS. No emoji, no external library.
+TERMINAL: CREATE SRC/APP/COMPONENTS/ICONS.JS
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/components
+cat << 'EOF' > src/app/components/Icons.js
+
+// File: src/app/components/Icons.js
+// On-brand pink SVG icons — no emoji
+
+export function IconMusic({ size = 24, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/>
+    </svg>
+  )
+}
+
+export function IconFire({ size = 24, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67z"/>
+    </svg>
+  )
+}
+
+export function IconTrophy({ size = 24, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <path d="M19 5h-2V3H7v2H5C3.9 5 3 5.9 3 7v1c0 2.55 1.92 4.63 4.39 4.94A5.01 5.01 0 0 0 11 15.9V18H9v2h6v-2h-2v-2.1a5.01 5.01 0 0 0 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2z"/>
+    </svg>
+  )
+}
+
+export function IconUsers({ size = 24, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+    </svg>
+  )
+}
+
+// Album art fallback — use this everywhere instead of the music emoji
+export function AlbumFallback({ size = '100%' }) {
+  return (
+    <div style={{
+      width: size, aspectRatio: '1', background: '#FFF0F5',
+      borderRadius: '10px', marginBottom: '1rem',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <IconMusic size={40} color="var(--pink)" />
+    </div>
+  )
+}
+EOF
+
+Fix album artwork in albums/page.js
+Add a useEffect to fetch iTunes artwork for all seed albums by their collection ID. Results are stored in state and used to replace the emoji fallback.
+ADD TO ALBUMSCONTENT() IN ALBUMS/PAGE.JS — INSIDE THE COMPONENT, BEFORE RETURN
+// Add this state
+const [seedArtwork, setSeedArtwork] = useState({})
+
+// Add this useEffect (runs once on mount)
+useEffect(() => {
+  async function fetchSeedArtwork() {
+    const results = await Promise.all(
+      SEED_ALBUMS.map(async (album) => {
+        try {
+          const res = await fetch(
+            `https://itunes.apple.com/lookup?id=${album.itunes_id}&entity=album`
+          )
+          const data = await res.json()
+          const url = data.results?.[0]?.artworkUrl100
+            ?.replace('100x100', '400x400')
+          return [album.itunes_id, url]
+        } catch { return [album.itunes_id, null] }
+      })
+    )
+    setSeedArtwork(Object.fromEntries(results.filter(([,v]) => v)))
+  }
+  fetchSeedArtwork()
+}, [])
+
+// In the seed card JSX, replace the emoji div:
+{seedArtwork[album.itunes_id] ? (
+  <img src={seedArtwork[album.itunes_id]} alt={album.title}
+    style={{ width: '100%', aspectRatio: '1', objectFit: 'cover',
+             borderRadius: '10px', marginBottom: '1rem' }} />
+) : (
+  <AlbumFallback />  // import from '@/app/components/Icons'
+)}
+
+Fix artist images in artists/page.js
+Same approach — fetch artist photos from iTunes by artist ID on mount, swap in the real photo when available.
+ADD TO ARTISTS() IN ARTISTS/PAGE.JS
+const [artistImages, setArtistImages] = useState({})
+
+useEffect(() => {
+  async function fetchArtistImages() {
+    const results = await Promise.all(
+      FEATURED_ARTISTS.map(async (artist) => {
+        try {
+          const res = await fetch(
+            `https://itunes.apple.com/lookup?id=${artist.id}&entity=album&limit=1`
+          )
+          const data = await res.json()
+          const img = data.results?.[0]?.artworkUrl100
+            ?.replace('100x100', '300x300')
+          return [artist.id, img]
+        } catch { return [artist.id, null] }
+      })
+    )
+    setArtistImages(Object.fromEntries(results.filter(([,v]) => v)))
+  }
+  fetchArtistImages()
+}, [])
+
+// In the artist card, replace the gradient avatar div:
+{artistImages[artist.id] ? (
+  <img src={artistImages[artist.id]} alt={artist.name}
+    style={{ width: 56, height: 56, borderRadius: '50%',
+             objectFit: 'cover', marginBottom: '1rem' }} />
+) : (
+  <div style={{ width: 56, height: 56, borderRadius: '50%',
+    background: 'linear-gradient(135deg, var(--pink) 0%, #7B2FF7 100%)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: '1.4rem', fontWeight: 700, color: 'white', marginBottom: '1rem',
+  }}>{artist.name.charAt(0)}</div>
+)}
+ SECTION 7: Social Features — Friends & Following
+This section adds friend search, follow/unfollow, and a friends activity feed. Requires the SQL from Section 1 Block 2 to be run first.
+
+FILE: src/app/friends/page.js — create this new file
+A page where users can search for other users by username and follow them. Also shows who you are following and their recent ratings.
+TERMINAL: CREATE SRC/APP/FRIENDS/PAGE.JS
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/friends
+cat << 'EOF' > src/app/friends/page.js
+
+'use client'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+
+export default function Friends() {
+  const router = useRouter()
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [following, setFollowing] = useState(new Set())
+  const [feed, setFeed] = useState([])
+  const [me, setMe] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.push('/auth'); return }
+      setMe(user)
+      const { data: follows } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', user.id)
+      const ids = (follows || []).map(f => f.following_id)
+      setFollowing(new Set(ids))
+      if (ids.length > 0) {
+        const { data: activity } = await supabase
+          .from('ratings')
+          .select(`score, created_at,
+            profiles ( username ),
+            tracks ( name ),
+            albums ( name, artist_name, artwork_url, itunes_collection_id )`)
+          .in('user_id', ids)
+          .order('created_at', { ascending: false })
+          .limit(20)
+        setFeed(activity || [])
+      }
+      setLoading(false)
+    }
+    init()
+  }, [])
+
+  async function searchUsers(q) {
+    if (!q.trim()) { setResults([]); return }
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, username, email')
+      .ilike('username', `%${q}%`)
+      .neq('id', me?.id)
+      .limit(10)
+    setResults(data || [])
+  }
+
+  async function toggleFollow(userId) {
+    if (following.has(userId)) {
+      await supabase.from('follows').delete()
+        .match({ follower_id: me.id, following_id: userId })
+      setFollowing(prev => { const n = new Set(prev); n.delete(userId); return n })
+    } else {
+      await supabase.from('follows')
+        .insert({ follower_id: me.id, following_id: userId })
+      setFollowing(prev => new Set([...prev, userId]))
+    }
+  }
+
+  if (loading) return <div style={{ padding: '5rem', textAlign: 'center', color: 'var(--gray-text)' }}>Loading...</div>
+
+  return (
+    <main className="section">
+      <div className="page-header">
+        <h1>Find Friends</h1>
+        <p>Search for users by username and follow their ratings.</p>
+      </div>
+      <div style={{ maxWidth: 540, margin: '0 auto 3rem', position: 'relative' }}>
+        <input className="input" placeholder="Search by username..."
+          value={query}
+          onChange={e => { setQuery(e.target.value); searchUsers(e.target.value) }} />
+        {results.length > 0 && (
+          <div style={{ position: 'absolute', top: '110%', left: 0, right: 0,
+            background: 'white', border: '1px solid var(--border)',
+            borderRadius: '12px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', zIndex: 50 }}>
+            {results.map(user => (
+              <div key={user.id} style={{ display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between', padding: '0.9rem 1.2rem',
+                borderBottom: '1px solid var(--border)' }}>
+                <Link href={`/profile/${user.id}`} style={{ fontWeight: 600 }}>
+                  {user.username || user.email?.split('@')[0]}
+                </Link>
+                <button
+                  onClick={() => toggleFollow(user.id)}
+                  className={following.has(user.id) ? 'secondary-btn' : 'primary-btn'}
+                  style={{ padding: '0.4rem 1rem', fontSize: '0.82rem' }}>
+                  {following.has(user.id) ? 'Unfollow' : 'Follow'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {feed.length > 0 && (
+        <div>
+          <h2 style={{ fontWeight: 700, fontSize: '1.2rem', marginBottom: '1.5rem' }}>
+            Friends Activity
+          </h2>
+          <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
+            {feed.map((r, i) => (
+              <Link key={i} href={`/album/${r.albums?.itunes_collection_id}`}
+                style={{ display: 'flex', alignItems: 'center', gap: '1rem',
+                  padding: '1rem 1.5rem',
+                  borderBottom: i < feed.length-1 ? '1px solid var(--border)' : 'none',
+                  textDecoration: 'none', color: 'inherit' }}>
+                {r.albums?.artwork_url && (
+                  <img src={r.albums.artwork_url} alt=""
+                    style={{ width: 44, height: 44, borderRadius: '8px', objectFit: 'cover', flexShrink: 0 }} />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 600, fontSize: '0.88rem' }}>
+                    <span style={{ color: 'var(--pink)' }}>{r.profiles?.username}</span>
+                    {' rated '}{r.tracks?.name}
+                  </p>
+                  <p style={{ color: 'var(--gray-text)', fontSize: '0.8rem' }}>
+                    {r.albums?.artist_name} — {r.albums?.name}
+                  </p>
+                </div>
+                <div style={{ width: 36, height: 36, borderRadius: '8px', flexShrink: 0,
+                  background: r.score >= 5 ? 'var(--pink)' : '#f0f0f0',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, color: r.score >= 5 ? 'white' : 'var(--black)' }}>
+                  {r.score}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+      {feed.length === 0 && following.size === 0 && (
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray-text)' }}>
+          <p>Search for friends above to follow them and see their ratings here.</p>
+        </div>
+      )}
+    </main>
+  )
+}
+EOF
+
+ADD TO NAV: In src/app/components/Nav.js, add { href: '/friends', label: 'FRIENDS' } to the links array so users can find the page.
+ SECTION 8: Profile Banner, Avatar & Spotify Linking
+This upgrades the profile page to a Twitter/Instagram-style layout with a wide banner image, overlapping avatar, and a button to connect Spotify.
+
+Prerequisites — run Section 1 Block 3 first
+The storage buckets must exist before the upload code will work. Confirm both the 'avatars' and 'banners' buckets appear in Supabase → Storage before proceeding.
+
+FILE: src/app/profile/page.js — add banner section
+Add the following code to your existing profile page. Insert the banner JSX at the very top of the return statement, before the existing avatar/user info div.
+ADD THESE FUNCTIONS INSIDE THE PROFILE() COMPONENT (BEFORE RETURN)
+async function uploadFile(file, bucket, pathSuffix) {
+  const ext = file.name.split('.').pop()
+  const path = `${user.id}/${pathSuffix}.${ext}`
+  const { error } = await supabase.storage
+    .from(bucket).upload(path, file, { upsert: true })
+  if (error) { console.error(error); return null }
+  const { data: { publicUrl } } = supabase.storage
+    .from(bucket).getPublicUrl(path)
+  return publicUrl
+}
+
+async function uploadBanner(file) {
+  const url = await uploadFile(file, 'banners', 'banner')
+  if (!url) return
+  await supabase.from('profiles').update({ banner_url: url }).eq('id', user.id)
+  setProfile(prev => ({ ...prev, banner_url: url }))
+}
+
+async function uploadAvatar(file) {
+  const url = await uploadFile(file, 'avatars', 'avatar')
+  if (!url) return
+  await supabase.from('profiles').update({ avatar_url: url }).eq('id', user.id)
+  setProfile(prev => ({ ...prev, avatar_url: url }))
+}
+
+async function connectSpotify() {
+  await supabase.auth.signInWithOAuth({
+    provider: 'spotify',
+    options: {
+      scopes: 'user-read-recently-played user-top-read user-read-private',
+      redirectTo: `${window.location.origin}/profile`,
+    }
+  })
+}
+
+REPLACE THE TOP OF THE RETURN STATEMENT IN PROFILE() WITH THIS BANNER LAYOUT
+return (
+  <main className="section" style={{ paddingTop: '0', maxWidth: '100%', padding: 0 }}>
+
+    {/* Banner */}
+    <div style={{ position: 'relative', height: 220, background: '#111',
+      overflow: 'hidden', marginBottom: 56 }}>
+      {profile?.banner_url
+        ? <img src={profile.banner_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        : <div style={{ width: '100%', height: '100%',
+            background: 'linear-gradient(135deg, #111 0%, #1a0010 60%, #2d0020 100%)' }} />
+      }
+      {/* Edit banner button — only show to owner */}
+      <label style={{ position: 'absolute', bottom: '1rem', right: '1rem',
+        background: 'rgba(0,0,0,0.65)', color: 'white',
+        padding: '0.4rem 1rem', borderRadius: '8px', cursor: 'pointer',
+        fontSize: '0.8rem', fontWeight: 600 }}>
+        Edit Banner
+        <input type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={e => e.target.files[0] && uploadBanner(e.target.files[0])} />
+      </label>
+      {/* Overlapping avatar */}
+      <label style={{ position: 'absolute', bottom: -48, left: '2rem',
+        cursor: 'pointer' }}>
+        <div style={{ width: 96, height: 96, borderRadius: '50%',
+          border: '4px solid white', overflow: 'hidden',
+          background: 'linear-gradient(135deg, var(--pink) 0%, #7B2FF7 100%)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '2.2rem', fontWeight: 700, color: 'white' }}>
+          {profile?.avatar_url
+            ? <img src={profile.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : initial
+          }
+        </div>
+        <input type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={e => e.target.files[0] && uploadAvatar(e.target.files[0])} />
+      </label>
+    </div>
+
+    {/* Profile info — now in a contained max-width section */}
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 2rem 5rem' }}>
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start',
+        marginBottom: '2rem', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+        <div>
+          <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.25rem' }}>{name}</h1>
+          <p style={{ color: 'var(--gray-text)', fontSize: '0.9rem' }}>
+            {user.email} · Member since {joinDate}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {!profile?.spotify_id ? (
+            <button onClick={connectSpotify} style={{
+              background: '#1DB954', color: 'white', padding: '0.5rem 1.2rem',
+              borderRadius: '8px', border: 'none', fontWeight: 600, cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: '0.85rem' }}>
+              Connect Spotify
+            </button>
+          ) : (
+            <span style={{ color: '#1DB954', fontWeight: 600, fontSize: '0.85rem',
+              padding: '0.5rem 1rem' }}>✓ Spotify Connected</span>
+          )}
+          <button onClick={signOut} style={{ padding: '0.45rem 1rem', borderRadius: '8px',
+            border: '1px solid var(--border)', background: 'white', cursor: 'pointer',
+            fontSize: '0.82rem', fontWeight: 600, color: 'var(--gray-text)', fontFamily: 'inherit' }}>
+            Sign Out
+          </button>
+        </div>
+      </div>
+      {/* ... rest of existing profile content (stats boxes, recent ratings) ... */}
+    </div>
+  </main>
+)
+
+Enable Spotify in Supabase
+38.	Create a Spotify Developer App at developer.spotify.com
+39.	App name: Banger Ratios · Redirect URI: https://vqtftxerpwpixhmpowvx.supabase.co/auth/v1/callback
+40.	Copy the Client ID and Client Secret
+41.	Go to Supabase → Authentication → Providers → Spotify
+42.	Toggle Enable, paste your Client ID and Client Secret, click Save
+ SECTION 9: About Page — Methodology & Firm
+This creates a polished about page with two sections: how the Banger Ratio works, and who is behind the site. Update the firm description with your actual details.
+
+TERMINAL: CREATE SRC/APP/ABOUT/PAGE.JS
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/about
+cat << 'EOF' > src/app/about/page.js
+
+export default function About() {
+  const ratingScale = [
+    [7, 'Perfect', 'Would listen on repeat for a week'],
+    [6, 'Great', 'Skip nothing — this one delivers'],
+    [5, 'Good', 'Solid track, plays well in context'],
+    [4, 'OK', 'Would not skip, would not seek out'],
+    [3, 'Meh', 'Probably skip on a second listen'],
+    [2, 'Bad', 'Drags the album down'],
+    [1, 'Awful', 'Should not exist'],
+  ]
+
+  return (
+    <main className="section">
+
+      {/* Hero */}
+      <div className="page-header">
+        <h1>About Banger Ratios</h1>
+        <p>Redefining how music quality is measured — track by track, by the community.</p>
+      </div>
+
+      {/* Mission */}
+      <div style={{ maxWidth: 720, margin: '0 auto 5rem', background: 'white',
+        borderRadius: '20px', border: '1px solid var(--border)', padding: '3rem' }}>
+        <h2 style={{ fontWeight: 700, fontSize: '1.4rem', marginBottom: '1rem' }}>
+          Why Banger Ratios?
+        </h2>
+        <p style={{ color: 'var(--gray-text)', lineHeight: 1.8, marginBottom: '1rem' }}>
+          Streaming numbers reward popularity, not quality. An album can have 10 filler
+          tracks and one hit single and still chart at number one. Critic scores reflect
+          the opinion of one person. Neither tells you what you actually need to know:
+          how many tracks on this album are genuinely worth replaying?
+        </p>
+        <p style={{ color: 'var(--gray-text)', lineHeight: 1.8 }}>
+          The Banger Ratio is the answer. Rate every track 1 to 7. Any track rated 5 or
+          above is a Banger. The percentage of Bangers is the Banger Ratio. Simple,
+          community-powered, and honest.
+        </p>
+      </div>
+
+      {/* Methodology */}
+      <div style={{ marginBottom: '5rem' }}>
+        <h2 style={{ textAlign: 'center', fontWeight: 700, fontSize: '1.6rem', marginBottom: '2.5rem' }}>
+          The Methodology
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
+          {[
+            { num: '01', title: 'Rate Every Track', desc: 'Score each song on an album from 1 to 7. Not the album as a whole — every individual track.' },
+            { num: '02', title: 'Banger Threshold', desc: 'A track rated 5 or above is classified as a Banger. Rated 4 or below it does not count.' },
+            { num: '03', title: 'Calculate the Ratio', desc: 'Banger Ratio = (number of Bangers ÷ total rated tracks) × 100. Expressed as a percentage.' },
+            { num: '04', title: 'Community Average', desc: 'All user ratings are averaged per track. An album needs 3+ ratings per track to appear on the leaderboard.' },
+          ].map((item, i) => (
+            <div key={i} className="card">
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--pink)',
+                marginBottom: '0.75rem', fontFamily: 'monospace' }}>{item.num}</div>
+              <h3 style={{ fontWeight: 700, marginBottom: '0.4rem' }}>{item.title}</h3>
+              <p style={{ color: 'var(--gray-text)', lineHeight: 1.6, fontSize: '0.9rem' }}>{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Rating Scale */}
+      <div style={{ maxWidth: 680, margin: '0 auto 5rem', background: 'white',
+        borderRadius: '20px', border: '1px solid var(--border)', padding: '2.5rem' }}>
+        <h2 style={{ fontWeight: 700, marginBottom: '1.5rem', fontSize: '1.3rem' }}>
+          The 1–7 Rating Scale
+        </h2>
+        {ratingScale.map(([score, label, desc]) => (
+          <div key={score} style={{ display: 'flex', alignItems: 'center', gap: '1rem',
+            padding: '0.8rem 0', borderBottom: score > 1 ? '1px solid var(--border)' : 'none' }}>
+            <div style={{ width: 36, height: 36, borderRadius: '8px', flexShrink: 0,
+              background: score >= 5 ? 'var(--pink)' : 'var(--bg-soft)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 700, color: score >= 5 ? 'white' : 'var(--black)' }}>
+              {score}
+            </div>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{label}</span>
+              <span style={{ color: 'var(--gray-text)', fontSize: '0.82rem', marginLeft: '0.5rem' }}>
+                — {desc}
+              </span>
+            </div>
+          </div>
+        ))}
+        <p style={{ marginTop: '1.5rem', color: 'var(--gray-text)', fontSize: '0.85rem', lineHeight: 1.6 }}>
+          Banger = rated 5 or higher. An album needs at least 3 community ratings per track to appear on the leaderboard.
+        </p>
+      </div>
+
+      {/* About the Firm */}
+      <div style={{ maxWidth: 720, margin: '0 auto', background: '#111',
+        borderRadius: '20px', padding: '3rem', color: 'white' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.5rem' }}>
+          <span style={{ width: 12, height: 12, background: 'var(--pink)', borderRadius: '3px', display: 'inline-block' }} />
+          <span style={{ fontWeight: 700, letterSpacing: '2px', fontSize: '0.8rem', color: 'var(--pink)' }}>
+            ABOUT US
+          </span>
+        </div>
+        <h2 style={{ fontWeight: 700, fontSize: '1.5rem', marginBottom: '1rem' }}>
+          Built by music obsessives
+        </h2>
+        <p style={{ color: '#9ca3af', lineHeight: 1.8, marginBottom: '1rem' }}>
+          {/* UPDATE THIS with your actual firm/team description */}
+          Banger Ratios was created by jamestfilmer-ops with a simple conviction: the music
+          industry measures the wrong things. We built the tool we always wanted — a community-driven
+          rating system that cuts through hype and tells you which albums actually deliver from
+          start to finish.
+        </p>
+        <p style={{ color: '#9ca3af', lineHeight: 1.8 }}>
+          Based online. Reachable at bangerratios.com.
+        </p>
+      </div>
+
+    </main>
+  )
+}
+EOF
+ SECTION 10: Quick Reference Cheat Sheet
+Your Project Info
+Item	Value
+Local project folder	~/Desktop/banger-ratios
+GitHub repo	github.com/jamestfilmer-ops/banger-ratios
+Live URL	www.bangerratios.com
+Local test URL	http://localhost:3000
+Supabase URL	https://vqtftxerpwpixhmpowvx.supabase.co
+Supabase dashboard	supabase.com → your project → SQL Editor / Table Editor / Storage
+Vercel dashboard	vercel.com → banger-ratios project
+Last.fm API signup	last.fm/api/account/create
+Spotify Dev dashboard	developer.spotify.com
+
+Terminal Commands
+Command	What it does
+cd ~/Desktop/banger-ratios	Navigate to project (do this FIRST every time)
+npm run dev	Start local server at localhost:3000
+npm run build	Test for errors before pushing — must pass before every push
+git add .	Stage all changed files
+git commit -m "message"	Save your changes with a description
+git push	Push to GitHub → Vercel auto-deploys in ~60 seconds
+rm -rf .next	Clear build cache (run before npm run dev if you see errors)
+cat src/app/page.js	Print a file to check its contents
+git status	See which files have been changed
+git log --oneline	See your recent commits
+
+Batch Order for This Deployment
+Complete batches in this exact order. Do not skip ahead.
+
+Batch	What it covers
+Section 1 — SQL	Run all 5 SQL blocks in Supabase SQL Editor first
+Section 2 — Open Graph	Update layout.js metadata + create og-image.png
+Section 3 — Responsive CSS	Append to globals.css + update Nav.js for mobile
+Section 4 — Security	Update auth/page.js with strong password validator
+Section 5 — News Banner	Replace NewsBanner.js + get Last.fm API key
+Section 6 — Images	Create Icons.js + update albums and artists pages
+Section 7 — Friends	Create friends/page.js + add to nav
+Section 8 — Profile	Update profile/page.js for banner + Spotify
+Section 9 — About	Create about/page.js
+Final — Test & Push	npm run build → test → git push
+
+What to Do When Things Break
+Problem	Solution
+Friends page shows nothing	Check Section 1 Block 2 SQL ran — the follows table must exist
+Banner upload fails	Check Section 1 Block 3 SQL ran — storage buckets must exist. Also confirm the bucket is public in Supabase Storage.
+Spotify connect does nothing	Check Supabase Auth Providers has Spotify enabled + redirect URI matches exactly
+Images still show emoji	Hard-refresh the browser (Cmd+Shift+R on Mac). The iTunes lookup is async — wait 2–3 seconds after page load.
+Link preview still shows Vercel logo	og-image.png must be in /public folder. og:image URL must be absolute (https://...). Use opengraph.xyz to debug.
+Nav overflows on mobile	Confirm the CSS media queries from Section 3 were appended (not replaced) in globals.css
+Password not enforcing on signup	The validatePassword function must be defined before the Auth() component. Check for typos in the regex.
+Red error: Module not found	A file is importing something that does not exist. Read the error — it shows exactly which import is missing.
+git push rejected	Run git pull first to get any remote changes, then push again
+Vercel builds but site broken	Add all new env vars to Vercel Settings → Environment Variables → redeploy
+
+The Order That Always Works
+43.	cd ~/Desktop/banger-ratios
+44.	Make your code changes
+45.	npm run dev → test at localhost:3000
+46.	npm run build → confirm no errors
+47.	git add .
+48.	git commit -m "describe the change"
+49.	git push
+50.	Wait ~60 seconds → check www.bangerratios.com
+
+
+■ BANGER RATIOS  ·  BR DEP VIII  ·  jamestfilmer-ops  ·  bangerratios.com
+

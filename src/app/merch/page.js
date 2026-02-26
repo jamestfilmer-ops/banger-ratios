@@ -7,7 +7,7 @@ const MERCH = [
   { name: 'Hot Pink Hoodie',               price: '$55', img: '🧥', desc: 'Heavyweight hoodie. "Rate Everything" back.',       tag: '' },
   { name: 'Enamel Pin Set (3-pack)',        price: '$15', img: '📌', desc: 'Certified Classic, Solid Gold, Skip It pins.',      tag: '' },
   { name: 'Vinyl Sticker Pack (10)',        price: '$8',  img: '✨', desc: 'Die-cut hot pink stickers.',                        tag: 'POPULAR' },
-  { name: 'Whats Your Ratio Mug',       price: '$18', img: '☕', desc: 'Ceramic mug. Pink interior. Dishwasher safe.',      tag: '' },
+  { name: 'Banger Ratio Mug',       price: '$18', img: '☕', desc: 'Ceramic mug. Pink interior. Dishwasher safe.',      tag: '' },
   { name: 'Banger Ratios Tote Bag',        price: '$22', img: '👜', desc: 'Canvas tote. "Rate Everything™" print.',            tag: '' },
   { name: 'Certified Classic Poster',      price: '$20', img: '🖼️', desc: 'Gallery-quality 18×24 print.',                     tag: 'LIMITED' },
   { name: 'BR Socks (3-pack)',             price: '$16', img: '🧦', desc: 'Hot pink, black, and white. Crew length.',          tag: '' },

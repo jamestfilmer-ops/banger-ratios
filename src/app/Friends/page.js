@@ -1,6 +1,3 @@
-// FILE: src/app/Friends/page.js
-// Cmd+A → Delete → Paste
-
 'use client'
 
 import { useState, useEffect } from 'react'

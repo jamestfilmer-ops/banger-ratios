@@ -1,13 +1,11 @@
-// ============================================================
 // FILE: src/app/layout.js
-// WHAT: Root layout — adds ToastProvider so all pages can use toasts
-// HOW: Cmd+A → Delete → Paste → Save → git add/commit/push
-// ============================================================
+// Cmd+A → Delete → Paste
 
 import './globals.css'
 import Nav from './components/Nav'
 import NewsBanner from './components/NewsBanner'
 import Footer from './components/Footer'
+import TermsBanner from './components/TermsBanner'
 import { ToastProvider } from './components/Toast'
 
 export const metadata = {
@@ -40,6 +38,7 @@ export default function RootLayout({ children }) {
           <Nav />
           {children}
           <Footer />
+          <TermsBanner />
         </ToastProvider>
       </body>
     </html>

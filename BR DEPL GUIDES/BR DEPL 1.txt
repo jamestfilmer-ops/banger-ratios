@@ -1,0 +1,1171 @@
+Would you like to use TypeScript? → Type No and press Enter
+Would you like to use ESLint? → Type Yes and press Enter
+Would you like to use Tailwind CSS? → Type Yes and press Enter
+Would you like your code inside a `src/` directory? → Type Yes and press Enter
+Would you like to use App Router? → Type Yes and press Enter
+Would you like to use Turbopack? → Type No and press Enter
+Would you like to customize the import alias? → Type No and press Enter
+
+
+BANGER RATIOS
+Complete Deployment Guide
+
+FROM ZERO TO LIVE WEBSITE
+Every click. Every command. Every file. Every line of code.
+
+Prepared for Isaac Lindell • February 2026
+ How This Guide Works
+This guide tells you EXACTLY which program to be in at every step. Look for these color-coded boxes:
+
+🖥️ YOU ARE IN: TERMINAL
+
+Blue box = you should be typing in Terminal (Mac) or Command Prompt (Windows).
+
+✏️ YOU ARE IN: VS CODE (YOUR CODE EDITOR)
+
+Blue box = you should be editing files in Visual Studio Code.
+
+🌐 YOU ARE IN: YOUR WEB BROWSER (CHROME, SAFARI, ETC.)
+
+Blue box = you should be on a website clicking things.
+
+✅ YOU SHOULD SEE: This is what your screen should look like if everything worked.
+
+⚠️ IF SOMETHING WENT WRONG: This is what to do if something didn’t work.
+
+Grey boxes contain code or commands. Copy and paste them EXACTLY as written:
+this is a command you copy and paste
+
+WHAT THESE PROGRAMS ARE (the 30-second version):
+TERMINAL = a text-based way to talk to your computer. Instead of clicking folders, you type commands.
+VS CODE = Microsoft Word, but for code. You open files and edit them here.
+GITHUB = Google Drive for code. It stores your files online so Vercel can find them.
+SUPABASE = your database. It stores all the user ratings, album data, and accounts.
+VERCEL = the company that puts your website on the internet. Free.
+That’s it. Those 5 things work together to make your website exist.
+ Phase 1: Install Everything (20 minutes)
+You said you have GitHub, Terminal, VS Code, and Vercel. Let’s make sure everything is properly installed.
+Step 1.1: Verify Node.js
+🖥️ YOU ARE IN: TERMINAL
+Open Terminal. On Mac: press Cmd + Space, type “Terminal”, press Enter. On Windows: press the Windows key, type “Command Prompt”, press Enter.
+Type this command and press Enter:
+node --version
+✅ YOU SHOULD SEE: A version number like v20.11.0 or v22.0.0. Any number is fine.
+⚠️ IF SOMETHING WENT WRONG: If you see “command not found” or an error, Node.js is not installed. Go to nodejs.org, click the big green LTS button, download it, install it (click Next through everything), then CLOSE Terminal and reopen it. Try the command again.
+
+Step 1.2: Verify Git
+🖥️ YOU ARE IN: TERMINAL
+In the same Terminal window, type:
+git --version
+✅ YOU SHOULD SEE: Something like “git version 2.43.0”. Any version is fine.
+⚠️ IF SOMETHING WENT WRONG: If error: go to git-scm.com/downloads, install it, restart Terminal, try again.
+
+Step 1.3: Verify npm
+🖥️ YOU ARE IN: TERMINAL
+npm comes automatically with Node.js. Verify it:
+npm --version
+✅ YOU SHOULD SEE: A number like 10.2.0. Any number is fine.
+
+CHECKPOINT: You now have Node.js, Git, and npm installed. These are the 3 tools your computer needs to build websites. Everything else happens through these.
+ Phase 2: Create Your Project (15 minutes)
+Step 2.1: Navigate to your Desktop
+🖥️ YOU ARE IN: TERMINAL
+We’re going to create your project folder on your Desktop so you can see it. Type:
+cd ~/Desktop
+(This tells Terminal: “go to my Desktop folder.” cd stands for “change directory.”)
+
+Step 2.2: Create a new Next.js project
+🖥️ YOU ARE IN: TERMINAL
+This ONE command creates your entire website starter. Copy and paste this EXACTLY:
+npx create-next-app@latest banger-ratios
+
+It will ask you questions. Here’s EXACTLY what to answer for each one:
+
+Would you like to use TypeScript? → Type No and press Enter
+Would you like to use ESLint? → Type Yes and press Enter
+Would you like to use Tailwind CSS? → Type Yes and press Enter
+Would you like your code inside a `src/` directory? → Type Yes and press Enter
+Would you like to use App Router? → Type Yes and press Enter
+Would you like to use Turbopack? → Type No and press Enter
+Would you like to customize the import alias? → Type No and press Enter
+
+Wait 1–3 minutes. A LOT of text will scroll by. That’s normal — it’s downloading thousands of small files your website needs.
+✅ YOU SHOULD SEE: The last line will say something like “Success! Created banger-ratios”
+⚠️ IF SOMETHING WENT WRONG: If it asks about package manager, choose “npm”. If you see red errors about permissions, try: sudo npx create-next-app@latest banger-ratios (it will ask for your Mac password).
+
+Step 2.3: Go into your new project folder
+🖥️ YOU ARE IN: TERMINAL
+cd banger-ratios
+You’re now “inside” your project. Every command from now on runs from here.
+
+Step 2.4: Test that it works
+🖥️ YOU ARE IN: TERMINAL
+npm run dev
+
+🌐 YOU ARE IN: YOUR WEB BROWSER
+Open Chrome/Safari and go to this address:
+http://localhost:3000
+✅ YOU SHOULD SEE: A Next.js welcome page with the Next.js logo. This means YOUR WEBSITE IS RUNNING ON YOUR COMPUTER. It’s not on the internet yet — only you can see it.
+⚠️ IF SOMETHING WENT WRONG: If you see “page not found”: make sure Terminal still says “ready” and you typed the URL exactly right including the http://
+
+Now go back to Terminal and press Ctrl + C (hold Control, press C). This stops the local server. We’ll turn it back on later.
+
+Step 2.5: Open the project in VS Code
+🖥️ YOU ARE IN: TERMINAL
+Type this to open the project in VS Code:
+code .
+(That’s the word “code” then a space then a period.) The period means “this folder.”
+✅ YOU SHOULD SEE: VS Code opens with your project files in the left sidebar. You’ll see folders like: src/, public/, node_modules/, and files like package.json, next.config.mjs, etc.
+⚠️ IF SOMETHING WENT WRONG: If “code” command not found: open VS Code manually, go to File → Open Folder, navigate to Desktop/banger-ratios, click Open.
+
+CHECKPOINT: You have a working Next.js project on your computer. You’ve seen it running in your browser. You have it open in VS Code. Now we’re going to build the actual Banger Ratios app.
+ Phase 3: Set Up Your Database (Supabase) (15 minutes)
+Supabase is where all your data lives: user accounts, albums, track ratings, Banger Ratios. Think of it like a giant spreadsheet in the cloud that your website reads from and writes to.
+Step 3.1: Create a Supabase account
+🌐 YOU ARE IN: YOUR WEB BROWSER
+1.	Go to: supabase.com
+2.	Click: “Start your project” (big green button)
+3.	Sign up: Click “Continue with GitHub.” This connects your GitHub account (easiest option).
+4.	Authorize: GitHub will ask if Supabase can access your account. Click “Authorize.”
+✅ YOU SHOULD SEE: The Supabase dashboard. It might ask you to create an “organization” — just name it your name (e.g., “Isaac Lindell”) and pick the Free plan.
+
+Step 3.2: Create a new project
+🌐 YOU ARE IN: YOUR WEB BROWSER (SUPABASE DASHBOARD)
+1.	Click: “New Project”
+2.	Project name: banger-ratios
+3.	Database password: Create a STRONG password. Write it down somewhere safe. You won’t need it often but you’ll need it eventually.
+4.	Region: Select “East US (North Virginia)” — closest to Nashville.
+5.	Click: “Create new project”
+Wait 1–2 minutes while it sets up.
+✅ YOU SHOULD SEE: A project dashboard with a welcome screen. There will be a sidebar on the left with options like Table Editor, SQL Editor, Authentication, etc.
+
+Step 3.3: Create your database tables
+Now we need to create the “spreadsheets” that store your data. We do this by running SQL commands. Don’t worry — you just copy and paste.
+🌐 YOU ARE IN: YOUR WEB BROWSER (SUPABASE DASHBOARD)
+1.	Click: “SQL Editor” in the left sidebar (it has a little terminal icon).
+2.	You’ll see: A big blank text area. This is where you paste SQL commands.
+3.	Select all the default text in the editor and delete it. We want it completely blank.
+4.	Copy the ENTIRE code block below and paste it into the SQL Editor:
+
+-- =============================================
+-- BANGER RATIOS DATABASE SCHEMA
+-- Copy this ENTIRE block and paste into Supabase SQL Editor
+-- =============================================
+
+-- 1. PROFILES TABLE (stores user info)
+create table public.profiles (
+  id uuid references auth.users on delete cascade primary key,
+  username text unique,
+  display_name text,
+  avatar_url text,
+  is_premium boolean default false,
+  created_at timestamptz default now()
+);
+
+-- 2. ALBUMS TABLE (stores album info from iTunes API)
+create table public.albums (
+  id bigserial primary key,
+  itunes_collection_id bigint unique not null,
+  name text not null,
+  artist_name text not null,
+  artwork_url text,
+  release_date date,
+  genre text,
+  track_count integer default 0,
+  total_ratings integer default 0,
+  banger_ratio numeric(5,2) default 0,
+  classification text default 'Unrated',
+  created_at timestamptz default now()
+);
+
+-- 3. TRACKS TABLE (individual songs on an album)
+create table public.tracks (
+  id bigserial primary key,
+  album_id bigint references public.albums on delete cascade,
+  itunes_track_id bigint unique not null,
+  name text not null,
+  track_number integer not null,
+  duration_ms integer,
+  preview_url text,
+  avg_rating numeric(3,1) default 0,
+  total_ratings integer default 0,
+  is_banger boolean default false,
+  created_at timestamptz default now()
+);
+
+-- 4. RATINGS TABLE (a user’s rating of a specific track)
+create table public.ratings (
+  id bigserial primary key,
+  user_id uuid references public.profiles on delete cascade not null,
+  track_id bigint references public.tracks on delete cascade not null,
+  album_id bigint references public.albums on delete cascade not null,
+  score smallint not null check (score >= 1 and score <= 10),
+  created_at timestamptz default now(),
+  unique(user_id, track_id)
+);
+
+-- 5. ENABLE ROW LEVEL SECURITY (protects your data)
+alter table public.profiles enable row level security;
+alter table public.albums enable row level security;
+alter table public.tracks enable row level security;
+alter table public.ratings enable row level security;
+
+-- 6. SECURITY POLICIES
+-- Anyone can read albums, tracks, and profiles
+create policy "Public read albums" on public.albums for select using (true);
+create policy "Public read tracks" on public.tracks for select using (true);
+create policy "Public read profiles" on public.profiles for select using (true);
+create policy "Public read ratings" on public.ratings for select using (true);
+
+-- Only logged-in users can insert ratings
+create policy "Users insert ratings" on public.ratings
+  for insert with check (auth.uid() = user_id);
+
+-- Users can only update/delete their own ratings
+create policy "Users update own ratings" on public.ratings
+  for update using (auth.uid() = user_id);
+create policy "Users delete own ratings" on public.ratings
+  for delete using (auth.uid() = user_id);
+
+-- Users can update their own profile
+create policy "Users update own profile" on public.profiles
+  for update using (auth.uid() = id);
+create policy "Users insert own profile" on public.profiles
+  for insert with check (auth.uid() = id);
+
+-- Authenticated users can insert albums/tracks (when searching)
+create policy "Auth users insert albums" on public.albums
+  for insert with check (auth.uid() is not null);
+create policy "Auth users insert tracks" on public.tracks
+  for insert with check (auth.uid() is not null);
+
+-- 7. AUTO-CREATE PROFILE ON SIGNUP
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, username, display_name)
+  values (
+    new.id,
+    new.raw_user_meta_data->>'username',
+    new.raw_user_meta_data->>'display_name'
+  );
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- 8. FUNCTION: RECALCULATE BANGER RATIO AFTER RATING
+create or replace function public.recalculate_banger_ratio(p_album_id bigint)
+returns void as $$
+declare
+  v_total_tracks integer;
+  v_banger_tracks integer;
+  v_ratio numeric(5,2);
+  v_class text;
+begin
+  -- Update each track’s average rating
+  update public.tracks t set
+    avg_rating = sub.avg_score,
+    total_ratings = sub.cnt,
+    is_banger = (sub.avg_score >= 7.0)
+  from (
+    select track_id, round(avg(score)::numeric, 1) as avg_score, count(*) as cnt
+    from public.ratings where album_id = p_album_id
+    group by track_id
+  ) sub
+  where t.id = sub.track_id and t.album_id = p_album_id;
+
+  -- Count tracks with at least 1 rating
+  select count(*) into v_total_tracks
+  from public.tracks where album_id = p_album_id and total_ratings > 0;
+
+  -- Count bangers
+  select count(*) into v_banger_tracks
+  from public.tracks where album_id = p_album_id and is_banger = true;
+
+  -- Calculate ratio
+  if v_total_tracks > 0 then
+    v_ratio := round((v_banger_tracks::numeric / v_total_tracks) * 100, 2);
+  else
+    v_ratio := 0;
+  end if;
+
+  -- Classification
+  v_class := case
+    when v_ratio >= 90 then 'Certified Classic'
+    when v_ratio >= 75 then 'Solid Gold'
+    when v_ratio >= 60 then 'Hit or Miss'
+    when v_ratio >= 40 then 'Filler Warning'
+    else 'Skip It'
+  end;
+
+  -- Update album
+  update public.albums set
+    banger_ratio = v_ratio,
+    classification = v_class,
+    total_ratings = (select count(*) from public.ratings where album_id = p_album_id)
+  where id = p_album_id;
+end;
+$$ language plpgsql security definer;
+
+5.	Click the green “Run” button in the bottom right of the SQL Editor.
+✅ YOU SHOULD SEE: “Success. No rows returned.” This is correct! SQL doesn’t return rows when creating tables — it just creates them silently.
+⚠️ IF SOMETHING WENT WRONG: If you see a red error: read the error message carefully. Most common issue: you accidentally left out a semicolon or pasted incomplete text. Select all, delete, and try pasting again. If still stuck, screenshot the error and send it to Claude.
+
+Step 3.4: Verify your tables were created
+🌐 YOU ARE IN: YOUR WEB BROWSER (SUPABASE DASHBOARD)
+1.	Click: “Table Editor” in the left sidebar.
+✅ YOU SHOULD SEE: Four tables listed: profiles, albums, tracks, ratings. If you see all four, your database is set up correctly.
+
+Step 3.5: Enable Email Auth
+🌐 YOU ARE IN: YOUR WEB BROWSER (SUPABASE DASHBOARD)
+1.	Click: “Authentication” in the left sidebar.
+2.	Click: “Providers” tab at the top.
+3.	Verify: “Email” is enabled (it should be by default). If not, toggle it on.
+This lets users sign up and log in with email and password.
+
+Step 3.6: Get your API keys
+Your website needs two pieces of information to talk to your database. Think of them like a phone number and a password.
+🌐 YOU ARE IN: YOUR WEB BROWSER (SUPABASE DASHBOARD)
+1.	Click: “Project Settings” in the left sidebar (gear icon at the bottom).
+2.	Click: “API” in the submenu.
+3.	You’ll see two important things:
+
+1. Project URL: Looks like https://abcdefg.supabase.co — COPY THIS. Save it in a note.
+2. anon / public key: A long string of random characters starting with “eyJ...” — COPY THIS. Save it in a note.
+
+KEEP THESE TWO VALUES HANDY. You’ll paste them in the next step. The “anon” key is safe to use in your website code — it’s designed to be public. The database is protected by the Row Level Security policies we just created.
+
+CHECKPOINT: Your database is set up with 4 tables, security policies, and a function that automatically calculates Banger Ratios. You have your API keys. Now we connect your website to your database.
+ Phase 4: Connect Your Website to Supabase (10 minutes)
+Step 4.1: Install the Supabase package
+🖥️ YOU ARE IN: TERMINAL
+Make sure you’re still in your project folder (Desktop/banger-ratios). If not, type: cd ~/Desktop/banger-ratios
+Now install the Supabase client library:
+npm install @supabase/supabase-js
+✅ YOU SHOULD SEE: “added 1 package” or similar. Quick install.
+
+Step 4.2: Create the environment file
+This file stores your secret API keys. Your website reads them, but they never get uploaded to GitHub.
+✏️ YOU ARE IN: VS CODE
+1.	In the left sidebar of VS Code, RIGHT-CLICK on the empty space below the file list.
+2.	Click “New File”.
+3.	Name it EXACTLY: .env.local    (YES, it starts with a period. That’s intentional.)
+4.	The file will open. Paste these two lines, replacing the placeholder values with YOUR actual keys from Step 3.6:
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+EXAMPLE of what it should look like with real values (these are fake):
+NEXT_PUBLIC_SUPABASE_URL=https://xyzabcdef.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz...
+Save the file (Cmd+S on Mac, Ctrl+S on Windows).
+⚠️ IF SOMETHING WENT WRONG: If the file disappears from the sidebar: VS Code might hide files starting with a dot. Go to File → Preferences → Settings, search “files.exclude”, and make sure .env.local isn’t excluded. Or just trust it’s there.
+
+Step 4.3: Create the Supabase client file
+This small file is the “connection” between your website and your database. Every page that needs data will use it.
+✏️ YOU ARE IN: VS CODE
+1.	In the left sidebar, click the arrow next to the “src” folder to expand it. 
+2.	RIGHT-CLICK on the “src” folder.
+3.	Click “New Folder.” Name it: lib
+4.	RIGHT-CLICK on the new “lib” folder. Click “New File.” Name it: supabase.js
+5.	The file opens. Paste this EXACTLY:
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+Save the file (Cmd+S / Ctrl+S).
+That’s it. This 6-line file connects your website to your database. Every page will import from this file.
+
+CHECKPOINT: Your website can now talk to your database. The environment file has your keys, and the supabase.js file creates the connection. Now we build the actual pages.
+ Phase 5: Build the Banger Ratios App (30 minutes)
+Now we replace the default Next.js starter page with our actual Banger Ratios app. We’ll build it step by step.
+Step 5.1: Update the global CSS
+First, let’s set up our pink brand colors.
+✏️ YOU ARE IN: VS CODE
+1.	In the left sidebar: src → app → globals.css (click to open it)
+2.	Select ALL the text in this file (Cmd+A / Ctrl+A) and DELETE it.
+3.	Paste this:
+@import 'tailwindcss';
+
+:root {
+  --pink: #FF0066;
+  --dark: #0D0D0D;
+  --light: #FFF0F5;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: #0D0D0D;
+  color: white;
+}
+Save.
+
+Step 5.2: Build the homepage
+This is the main page people see when they visit bangerratios.com.
+✏️ YOU ARE IN: VS CODE
+1.	In the left sidebar: src → app → page.js (click to open it)
+2.	Select ALL the text in this file and DELETE it.
+3.	Paste this entire block:
+'use client'
+
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+
+export default function Home() {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [topAlbums, setTopAlbums] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [user, setUser] = useState(null)
+
+  // Check if user is logged in
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data?.user || null)
+    })
+    // Load top rated albums
+    loadTopAlbums()
+  }, [])
+
+  async function loadTopAlbums() {
+    const { data } = await supabase
+      .from('albums')
+      .select('*')
+      .gt('total_ratings', 0)
+      .order('banger_ratio', { ascending: false })
+      .limit(10)
+    setTopAlbums(data || [])
+  }
+
+  // Search iTunes API for albums
+  async function searchAlbums(e) {
+    e.preventDefault()
+    if (!searchQuery.trim()) return
+    setLoading(true)
+    try {
+      const res = await fetch(
+        `https://itunes.apple.com/search?term=${encodeURIComponent(searchQuery)}&entity=album&limit=12`
+      )
+      const data = await res.json()
+      setSearchResults(data.results || [])
+    } catch (err) {
+      console.error('Search failed:', err)
+    }
+    setLoading(false)
+  }
+
+  function getBadge(ratio) {
+    if (ratio >= 90) return { label: '💎 Certified Classic', color: '#FFD700' }
+    if (ratio >= 75) return { label: '🥇 Solid Gold', color: '#FFD700' }
+    if (ratio >= 60) return { label: '🎵 Hit or Miss', color: '#FF0066' }
+    if (ratio >= 40) return { label: '⚠️ Filler Warning', color: '#F5A623' }
+    return { label: '❌ Skip It', color: '#FF2D55' }
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#0D0D0D' }}>
+      {/* HEADER */}
+      <header style={{
+        borderBottom: '1px solid #222',
+        padding: '16px 24px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        position: 'sticky',
+        top: 0,
+        background: 'rgba(13,13,13,0.95)',
+        backdropFilter: 'blur(20px)',
+        zIndex: 100
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 8,
+            background: '#FF0066',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 900, fontSize: 14, color: 'white'
+          }}>BR</div>
+          <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: 1 }}>
+            BANGER RATIOS
+          </span>
+        </div>
+        <a href='/auth' style={{
+          padding: '8px 16px', borderRadius: 8,
+          background: user ? '#222' : '#FF0066',
+          color: 'white', textDecoration: 'none',
+          fontSize: 13, fontWeight: 600
+        }}>
+          {user ? 'My Profile' : 'Sign Up / Log In'}
+        </a>
+      </header>
+
+      {/* HERO */}
+      <section style={{ padding: '60px 24px', textAlign: 'center' }}>
+        <h1 style={{ fontSize: 48, fontWeight: 900, margin: '0 0 12px' }}>
+          The Real Measure of Musical Consistency
+        </h1>
+        <p style={{ color: '#888', fontSize: 18, maxWidth: 500, margin: '0 auto 32px' }}>
+          Rate every track. See the Banger Ratio. Settle the debate.
+        </p>
+
+        {/* SEARCH BAR */}
+        <form onSubmit={searchAlbums} style={{
+          display: 'flex', maxWidth: 500, margin: '0 auto',
+          background: '#1A1A1A', borderRadius: 12,
+          border: '1px solid #333', overflow: 'hidden'
+        }}>
+          <input
+            type='text'
+            placeholder='Search for an album...'
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{
+              flex: 1, padding: '14px 18px',
+              background: 'transparent', border: 'none',
+              color: 'white', fontSize: 16, outline: 'none'
+            }}
+          />
+          <button type='submit' style={{
+            padding: '14px 24px', background: '#FF0066',
+            border: 'none', color: 'white',
+            fontWeight: 700, fontSize: 14, cursor: 'pointer'
+          }}>
+            {loading ? 'Searching...' : 'Search'}
+          </button>
+        </form>
+      </section>
+
+      <main style={{ maxWidth: 900, margin: '0 auto', padding: '0 24px 60px' }}>
+
+        {/* SEARCH RESULTS */}
+        {searchResults.length > 0 && (
+          <section>
+            <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>
+              Search Results
+            </h2>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+              gap: 16
+            }}>
+              {searchResults.map(album => (
+                <a key={album.collectionId}
+                  href={`/album/${album.collectionId}`}
+                  style={{
+                    background: '#111', borderRadius: 12,
+                    overflow: 'hidden', textDecoration: 'none',
+                    color: 'white', border: '1px solid #222'
+                  }}>
+                  <img
+                    src={album.artworkUrl100?.replace('100x100', '300x300')}
+                    alt={album.collectionName}
+                    style={{ width: '100%', aspectRatio: '1', objectFit: 'cover' }}
+                  />
+                  <div style={{ padding: 12 }}>
+                    <p style={{
+                      fontSize: 13, fontWeight: 700,
+                      margin: '0 0 4px',
+                      overflow: 'hidden', textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>{album.collectionName}</p>
+                    <p style={{ fontSize: 11, color: '#888', margin: 0 }}>
+                      {album.artistName}
+                    </p>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* TOP RATED ALBUMS */}
+        {topAlbums.length > 0 && (
+          <section style={{ marginTop: 48 }}>
+            <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>
+              🔥 Top Rated Albums
+            </h2>
+            {topAlbums.map((album, i) => {
+              const badge = getBadge(album.banger_ratio)
+              return (
+                <a key={album.id}
+                  href={`/album/${album.itunes_collection_id}`}
+                  style={{
+                    display: 'flex', alignItems: 'center',
+                    gap: 16, padding: '14px 16px',
+                    background: i % 2 === 0 ? '#111' : 'transparent',
+                    borderRadius: 10, textDecoration: 'none',
+                    color: 'white', marginBottom: 4
+                  }}>
+                  <span style={{
+                    fontSize: 18, fontWeight: 800, color: '#444',
+                    width: 32, textAlign: 'center'
+                  }}>{i + 1}</span>
+                  {album.artwork_url && <img
+                    src={album.artwork_url}
+                    alt=''
+                    style={{
+                      width: 48, height: 48,
+                      borderRadius: 8, objectFit: 'cover'
+                    }}
+                  />}
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>
+                      {album.name}
+                    </p>
+                    <p style={{ fontSize: 12, color: '#888', margin: 0 }}>
+                      {album.artist_name} \u00B7 {album.total_ratings} ratings
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <p style={{
+                      fontSize: 22, fontWeight: 900,
+                      color: '#FF0066', margin: '0 0 2px'
+                    }}>{album.banger_ratio}%</p>
+                    <p style={{
+                      fontSize: 10, color: badge.color,
+                      fontWeight: 600, margin: 0
+                    }}>{badge.label}</p>
+                  </div>
+                </a>
+              )
+            })}
+          </section>
+        )}
+
+        {/* EMPTY STATE */}
+        {topAlbums.length === 0 && searchResults.length === 0 && (
+          <section style={{ textAlign: 'center', padding: '60px 0' }}>
+            <p style={{ fontSize: 48, marginBottom: 16 }}>🎵</p>
+            <p style={{ color: '#666', fontSize: 16 }}>
+              Search for an album above to start rating tracks!
+            </p>
+          </section>
+        )}
+      </main>
+
+      {/* FOOTER */}
+      <footer style={{
+        borderTop: '1px solid #222',
+        padding: 24, textAlign: 'center'
+      }}>
+        <p style={{ color: '#444', fontSize: 12 }}>
+          Banger Ratios\u2122 2026 \u00B7 The Real Measure of Musical Consistency
+        </p>
+      </footer>
+    </div>
+  )
+}
+Save the file (Cmd+S / Ctrl+S).
+
+Step 5.3: Remove the default layout clutter
+✏️ YOU ARE IN: VS CODE
+1.	Open: src → app → layout.js
+2.	Select ALL and replace with this:
+import './globals.css'
+
+export const metadata = {
+  title: 'Banger Ratios - The Real Measure of Musical Consistency',
+  description: 'Rate every track. See the Banger Ratio. Settle the debate.',
+}
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang='en'>
+      <body>{children}</body>
+    </html>
+  )
+}
+Save.
+
+Step 5.4: Test your homepage
+🖥️ YOU ARE IN: TERMINAL
+Start the dev server:
+npm run dev
+
+🌐 YOU ARE IN: YOUR WEB BROWSER
+Go to:
+http://localhost:3000
+✅ YOU SHOULD SEE: A dark page with “BANGER RATIOS” in the header, a big heading that says “The Real Measure of Musical Consistency,” a search bar, and a “Sign Up / Log In” button. Try searching for an album — you should see album covers appear!
+⚠️ IF SOMETHING WENT WRONG: If you see errors: check that .env.local has the correct Supabase URL and key. Make sure you saved all files. If you see a white page with an error, open the browser console (right-click → Inspect → Console tab) and screenshot the red error text for Claude.
+
+CHECKPOINT: YOUR HOMEPAGE IS WORKING! You can search for albums and see real results from the iTunes API. The Banger Ratios header and brand are showing. The database is connected. Next: let’s add the album rating page.
+ Phase 6: Build the Album Rating Page (20 minutes)
+When someone clicks on an album, they need to see all the tracks and be able to rate them. This is the core of Banger Ratios.
+Step 6.1: Create the album page folder
+✏️ YOU ARE IN: VS CODE
+1.	In the left sidebar: src → app
+2.	RIGHT-CLICK on the “app” folder. Click “New Folder.”
+3.	Name it EXACTLY: album
+4.	RIGHT-CLICK on the new “album” folder. Click “New Folder.”
+5.	Name it EXACTLY: [id]     (YES, include the square brackets. This is how Next.js handles dynamic URLs.)
+6.	RIGHT-CLICK on the [id] folder. Click “New File.” Name it: page.js
+Your folder structure should now look like: src/app/album/[id]/page.js
+
+Step 6.2: Build the album page
+✏️ YOU ARE IN: VS CODE
+Open the new page.js and paste this entire block:
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+
+export default function AlbumPage() {
+  const params = useParams()
+  const albumId = params.id
+  const [album, setAlbum] = useState(null)
+  const [tracks, setTracks] = useState([])
+  const [ratings, setRatings] = useState({})
+  const [user, setUser] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data?.user || null))
+    loadAlbum()
+  }, [albumId])
+
+  async function loadAlbum() {
+    // Fetch from iTunes API
+    const res = await fetch(
+      `https://itunes.apple.com/lookup?id=${albumId}&entity=song`
+    )
+    const data = await res.json()
+    const results = data.results || []
+    const albumData = results.find(r => r.wrapperType === 'collection')
+    const trackData = results.filter(r => r.wrapperType === 'track')
+
+    if (!albumData) return
+
+    // Upsert album into Supabase
+    const { data: dbAlbum } = await supabase
+      .from('albums')
+      .upsert({
+        itunes_collection_id: albumData.collectionId,
+        name: albumData.collectionName,
+        artist_name: albumData.artistName,
+        artwork_url: albumData.artworkUrl100?.replace('100x100', '600x600'),
+        release_date: albumData.releaseDate?.split('T')[0],
+        genre: albumData.primaryGenreName,
+        track_count: trackData.length
+      }, { onConflict: 'itunes_collection_id' })
+      .select()
+      .single()
+
+    setAlbum(dbAlbum)
+
+    // Upsert tracks
+    for (const track of trackData) {
+      await supabase.from('tracks').upsert({
+        album_id: dbAlbum.id,
+        itunes_track_id: track.trackId,
+        name: track.trackName,
+        track_number: track.trackNumber,
+        duration_ms: track.trackTimeMillis,
+        preview_url: track.previewUrl
+      }, { onConflict: 'itunes_track_id' })
+    }
+
+    // Load tracks from DB (with avg ratings)
+    const { data: dbTracks } = await supabase
+      .from('tracks')
+      .select('*')
+      .eq('album_id', dbAlbum.id)
+      .order('track_number', { ascending: true })
+
+    setTracks(dbTracks || [])
+
+    // Load user’s existing ratings
+    const { data: { user: currentUser } } = await supabase.auth.getUser()
+    if (currentUser) {
+      const { data: userRatings } = await supabase
+        .from('ratings')
+        .select('track_id, score')
+        .eq('user_id', currentUser.id)
+        .eq('album_id', dbAlbum.id)
+      const ratingsMap = {}
+      ;(userRatings || []).forEach(r => ratingsMap[r.track_id] = r.score)
+      setRatings(ratingsMap)
+    }
+    setLoaded(true)
+  }
+
+  async function rateTrack(trackId, score) {
+    if (!user) { alert('Please sign in to rate!'); return }
+    setRatings(prev => ({ ...prev, [trackId]: score }))
+
+    await supabase.from('ratings').upsert({
+      user_id: user.id,
+      track_id: trackId,
+      album_id: album.id,
+      score: score
+    }, { onConflict: 'user_id,track_id' })
+
+    // Recalculate banger ratio
+    await supabase.rpc('recalculate_banger_ratio', {
+      p_album_id: album.id
+    })
+
+    // Reload to see updated averages
+    const { data: dbTracks } = await supabase
+      .from('tracks')
+      .select('*')
+      .eq('album_id', album.id)
+      .order('track_number', { ascending: true })
+    setTracks(dbTracks || [])
+
+    const { data: refreshedAlbum } = await supabase
+      .from('albums')
+      .select('*')
+      .eq('id', album.id)
+      .single()
+    setAlbum(refreshedAlbum)
+  }
+
+  function msToTime(ms) {
+    const min = Math.floor(ms / 60000)
+    const sec = Math.floor((ms % 60000) / 1000)
+    return `${min}:${sec.toString().padStart(2, '0')}`
+  }
+
+  if (!loaded) return (
+    <div style={{ minHeight: '100vh', background: '#0D0D0D',
+      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <p style={{ color: '#666' }}>Loading album...</p>
+    </div>
+  )
+
+  const bangers = tracks.filter(t => t.is_banger).length
+  const rated = tracks.filter(t => t.total_ratings > 0).length
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#0D0D0D' }}>
+      {/* HEADER */}
+      <header style={{
+        borderBottom: '1px solid #222', padding: '12px 24px',
+        display: 'flex', alignItems: 'center', gap: 10
+      }}>
+        <a href='/' style={{ color: 'white', textDecoration: 'none',
+          display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 7,
+            background: '#FF0066', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            fontWeight: 900, fontSize: 12 }}>BR</div>
+          <span style={{ fontWeight: 800, fontSize: 16 }}>BANGER RATIOS</span>
+        </a>
+      </header>
+
+      <main style={{ maxWidth: 700, margin: '0 auto', padding: '32px 20px' }}>
+        {/* ALBUM INFO */}
+        {album && (
+          <div style={{ display: 'flex', gap: 24, marginBottom: 32,
+            flexWrap: 'wrap' }}>
+            {album.artwork_url && <img src={album.artwork_url}
+              alt={album.name} style={{ width: 200, height: 200,
+                borderRadius: 14, objectFit: 'cover' }} />}
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <h1 style={{ fontSize: 28, fontWeight: 900, margin: '0 0 6px' }}>
+                {album.name}
+              </h1>
+              <p style={{ color: '#888', fontSize: 16, margin: '0 0 16px' }}>
+                {album.artist_name}
+              </p>
+              <div style={{ background: '#111', borderRadius: 12,
+                padding: 20, border: '1px solid #222' }}>
+                <p style={{ fontSize: 42, fontWeight: 900,
+                  color: '#FF0066', margin: '0 0 4px' }}>
+                  {album.banger_ratio || 0}%
+                </p>
+                <p style={{ color: '#888', fontSize: 13, margin: '0 0 4px' }}>
+                  Banger Ratio
+                </p>
+                <p style={{ color: '#666', fontSize: 12, margin: 0 }}>
+                  {bangers} bangers out of {rated || album.track_count} tracks
+                  {' \u00B7 '}{album.total_ratings || 0} total ratings
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TRACK LIST */}
+        <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 12 }}>
+          Rate Every Track
+        </h2>
+        {!user && (
+          <div style={{ background: '#1a0a10', border: '1px solid #FF006640',
+            borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+            <p style={{ color: '#FF0066', fontSize: 13, margin: 0 }}>
+              <a href='/auth' style={{ color: '#FF0066', fontWeight: 700 }}>
+                Sign in</a> to rate tracks and contribute to the Banger Ratio!
+            </p>
+          </div>
+        )}
+        {tracks.map(track => (
+          <div key={track.id} style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '12px 14px', borderRadius: 10,
+            background: track.is_banger ? '#0a1a0a' : 'transparent',
+            border: track.is_banger ? '1px solid #00B84D30' : '1px solid transparent',
+            marginBottom: 6
+          }}>
+            <span style={{ color: '#444', fontSize: 14, fontWeight: 700,
+              width: 24, textAlign: 'center' }}>{track.track_number}</span>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: 14, fontWeight: 600, margin: '0 0 2px' }}>
+                {track.name}
+                {track.is_banger && ' \uD83D\uDD25'}
+              </p>
+              <p style={{ color: '#666', fontSize: 11, margin: 0 }}>
+                {track.duration_ms ? msToTime(track.duration_ms) : ''} 
+                {track.total_ratings > 0
+                  ? `\u00B7 Avg: ${track.avg_rating} \u00B7 ${track.total_ratings} ratings`
+                  : '\u00B7 No ratings yet'}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 3 }}>
+              {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                <button key={n} onClick={() => rateTrack(track.id, n)}
+                  style={{
+                    width: 28, height: 28, borderRadius: 6,
+                    border: 'none', cursor: user ? 'pointer' : 'default',
+                    fontSize: 11, fontWeight: 700,
+                    background: ratings[track.id] === n ? '#FF0066'
+                      : ratings[track.id] > n ? '#FF006640' : '#1A1A1A',
+                    color: ratings[track.id] >= n ? 'white' : '#555'
+                  }}>{n}</button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </main>
+    </div>
+  )
+}
+Save the file.
+ Phase 7: Build the Sign Up / Login Page (10 minutes)
+✏️ YOU ARE IN: VS CODE
+1.	RIGHT-CLICK on the “app” folder.
+2.	New Folder → name it: auth
+3.	RIGHT-CLICK on “auth” folder. New File → name it: page.js
+4.	Paste this:
+'use client'
+
+import { useState } from 'react'
+import { supabase } from '@/lib/supabase'
+
+export default function AuthPage() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [username, setUsername] = useState('')
+  const [isSignUp, setIsSignUp] = useState(false)
+  const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setLoading(true)
+    setMessage('')
+
+    if (isSignUp) {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { username, display_name: username }
+        }
+      })
+      if (error) setMessage(error.message)
+      else setMessage('Check your email for a confirmation link!')
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({
+        email, password
+      })
+      if (error) setMessage(error.message)
+      else window.location.href = '/'
+    }
+    setLoading(false)
+  }
+
+  const inputStyle = {
+    width: '100%', padding: '12px 16px',
+    background: '#1A1A1A', border: '1px solid #333',
+    borderRadius: 8, color: 'white', fontSize: 15,
+    outline: 'none', boxSizing: 'border-box'
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#0D0D0D',
+      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: '100%', maxWidth: 380, padding: 24 }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <a href='/' style={{ color: 'white', textDecoration: 'none' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12,
+              background: '#FF0066', display: 'inline-flex',
+              alignItems: 'center', justifyContent: 'center',
+              fontWeight: 900, fontSize: 18, marginBottom: 12 }}>BR</div>
+            <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>
+              BANGER RATIOS
+            </h1>
+          </a>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{
+          background: '#111', borderRadius: 16,
+          padding: 24, border: '1px solid #222'
+        }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 20px' }}>
+            {isSignUp ? 'Create Account' : 'Welcome Back'}
+          </h2>
+
+          {isSignUp && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: '#888',
+                display: 'block', marginBottom: 4 }}>Username</label>
+              <input style={inputStyle} value={username}
+                onChange={e => setUsername(e.target.value)}
+                placeholder='your_username' required />
+            </div>
+          )}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 12, color: '#888',
+              display: 'block', marginBottom: 4 }}>Email</label>
+            <input style={inputStyle} type='email' value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder='you@example.com' required />
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ fontSize: 12, color: '#888',
+              display: 'block', marginBottom: 4 }}>Password</label>
+            <input style={inputStyle} type='password' value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder='At least 6 characters' required />
+          </div>
+
+          <button type='submit' style={{
+            width: '100%', padding: 14, borderRadius: 10,
+            background: '#FF0066', border: 'none', color: 'white',
+            fontSize: 15, fontWeight: 700, cursor: 'pointer'
+          }}>
+            {loading ? 'Please wait...' : isSignUp ? 'Sign Up' : 'Log In'}
+          </button>
+
+          {message && <p style={{ color: message.includes('Check')
+            ? '#00B84D' : '#FF2D55', fontSize: 13, marginTop: 12 }}>{message}</p>}
+
+          <p style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: '#666' }}>
+            {isSignUp ? 'Already have an account?' : "Don't have an account?"}
+            {' '}
+            <button type='button' onClick={() => setIsSignUp(!isSignUp)}
+              style={{ background: 'none', border: 'none', color: '#FF0066',
+                cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+              {isSignUp ? 'Log In' : 'Sign Up'}
+            </button>
+          </p>
+        </form>
+      </div>
+    </div>
+  )
+}
+Save the file.
+
+Step 7.2: Test everything locally
+🖥️ YOU ARE IN: TERMINAL
+If the server isn’t still running, start it:
+npm run dev
+🌐 YOU ARE IN: YOUR WEB BROWSER
+Go to http://localhost:3000. You should now be able to:
+1.	Search for an album (try “Kendrick Lamar”)
+2.	Click an album to see the track list
+3.	Click “Sign Up / Log In” to create an account
+4.	After signing up (check your email for confirmation), rate tracks 1–10!
+5.	See the Banger Ratio update in real-time after you rate tracks!
+
+CHECKPOINT: YOU HAVE A FULLY FUNCTIONAL BANGER RATIOS APP RUNNING ON YOUR COMPUTER. Users can sign up, search albums, rate tracks, and see Banger Ratios calculated automatically. Now we put it on the internet.
+ Phase 8: Put It On The Internet (15 minutes)
+Step 8.1: Push your code to GitHub
+Right now your code only exists on your computer. We need to upload it to GitHub so Vercel can find it.
+🖥️ YOU ARE IN: TERMINAL
+Press Ctrl+C to stop the dev server if it’s running. Then type these commands ONE AT A TIME:
+git add .
+git commit -m "Initial Banger Ratios app"
+git branch -M main
+git remote add origin https://github.com/YOUR-USERNAME/banger-ratios.git
+git push -u origin main
+REPLACE “YOUR-USERNAME” with your actual GitHub username.
+If it asks for your GitHub username and password: your password is now a Personal Access Token. Go to github.com → Settings → Developer settings → Personal access tokens → Generate new token. Use that as your password.
+✅ YOU SHOULD SEE: Text ending with something like “branch 'main' set up to track 'origin/main'.”
+⚠️ IF SOMETHING WENT WRONG: If you get “remote already exists”: that’s fine, skip the git remote line and just do git push -u origin main. If you get “repository not found”: make sure you created a repository called “banger-ratios” on github.com first.
+
+Step 8.2: Deploy to Vercel
+🌐 YOU ARE IN: YOUR WEB BROWSER
+1.	Go to: vercel.com
+2.	Log in with your GitHub account.
+3.	Click: “Add New…” → “Project”
+4.	You’ll see a list of your GitHub repos. Find “banger-ratios” and click “Import.”
+5.	IMPORTANT: Before clicking Deploy, expand “Environment Variables.” 
+6.	Add your first variable:
+   Name: NEXT_PUBLIC_SUPABASE_URL
+   Value: (paste your Supabase URL from Step 3.6)
+   Click “Add.”
+7.	Add your second variable:
+   Name: NEXT_PUBLIC_SUPABASE_ANON_KEY
+   Value: (paste your Supabase anon key from Step 3.6)
+   Click “Add.”
+8.	NOW click “Deploy.”
+Wait 1–3 minutes. You’ll see a build log scrolling. When it’s done:
+✅ YOU SHOULD SEE: A “Congratulations!” screen with a preview of your website and a URL like banger-ratios.vercel.app. CLICK THAT URL. You should see your Banger Ratios website — live on the internet!
+⚠️ IF SOMETHING WENT WRONG: If the build fails: the error log will show what went wrong. Most common: a typo in your code. Screenshot the error and send it to Claude. If it deployed but shows a blank page: you probably forgot to add the environment variables. Go to Project Settings → Environment Variables and add them, then click “Redeploy”.
+
+Step 8.3: Set up your custom domain (optional)
+🌐 YOU ARE IN: YOUR WEB BROWSER
+1.	Buy bangerratios.com at namecheap.com or cloudflare.com (~$10–12/year).
+2.	In Vercel: go to your project → Settings → Domains.
+3.	Type your domain name and click “Add.”
+4.	Vercel will give you DNS records to add. Follow their specific instructions for your registrar.
+5.	Wait 5–30 minutes for DNS to propagate. Then your custom domain works with free HTTPS.
+ Phase 9: How to Update Your Site Going Forward
+Whenever you change your code, here’s how to publish the update:
+🖥️ YOU ARE IN: TERMINAL
+git add .
+git commit -m "describe what you changed"
+git push
+That’s it. Three commands. Vercel automatically detects the push and rebuilds your site within 1–2 minutes. You don’t need to visit Vercel or click anything — it happens automatically.
+
+Your Project File Map
+Here’s what every important file in your project does:
+banger-ratios/
+├─ .env.local              ← Your secret Supabase keys (NEVER share)
+├─ package.json             ← List of packages your project uses
+├─ next.config.mjs          ← Next.js settings (don’t touch)
+├─ src/
+│  ├─ lib/
+│  │  └─ supabase.js          ← Database connection (6 lines)
+│  └─ app/
+│     ├─ globals.css          ← Brand colors and styling
+│     ├─ layout.js            ← HTML wrapper (title, metadata)
+│     ├─ page.js              ← HOMEPAGE (search + leaderboard)
+│     ├─ auth/
+│     │  └─ page.js            ← Sign up / Log in page
+│     └─ album/
+│        └─ [id]/
+│           └─ page.js          ← ALBUM PAGE (track ratings)
+
+YOU DID IT.
+You now have a live, working Banger Ratios website that:
+• Searches any album in the iTunes library (millions of albums)
+• Lets users create accounts and log in
+• Lets users rate every track 1–10
+• Automatically calculates the Banger Ratio
+• Shows classifications (Certified Classic, Solid Gold, etc.)
+• Displays a leaderboard of top-rated albums
+• Is hosted for free on Vercel with your custom domain
+• Has a database on Supabase with security policies
+
+Total cost: ~$12 for the domain. Everything else: free.
+
+When you get stuck (and you will): screenshot the error, send it to Claude, and say “Help.” That’s what I’m here for.
+

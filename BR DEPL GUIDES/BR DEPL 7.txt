@@ -1,0 +1,449 @@
+
+■ BANGER RATIOS
+DEPLOYMENT GUIDE  BR DEP X
+February 2026  ·  bangerratios.com  ·  github.com/jamestfilmer-ops
+
+What this guide fixes and adds:
+✓	EMERGENCY FIX: layout.js crash — site down, fix this first
+✓	Section 1: Password settings — correct Supabase dashboard location (Authentication → Auth Providers, NOT Policies)
+✓	Section 2: Open Graph link preview — terminal command + og-image.png setup (do after logo is ready)
+✓	Section 3: Last.fm API key — step-by-step to get free key and wire it into NewsBanner.js
+✓	Section 4: Supabase password strength — where the setting actually lives in the dashboard
+✓	Section 5: Git identity — fix 'Committer configured automatically' warning
+✓	Section 6: rm -rf .next fix — you ran rm -rf next (wrong), correct command included
+✓	All terminal commands — 100% copy-paste, no VS Code required
+✓	VS Code fallback — first line / last line markers for every file that needs one
+
+READ THIS FIRST: The layout.js error is breaking your live site right now. Go to SECTION 0 — EMERGENCY FIX before anything else. It is a one-command terminal fix.
+
+TERMINAL-FIRST POLICY: Every code change in this guide uses cat << 'EOF' terminal commands. Where a terminal command is not possible, the guide gives you the FIRST LINE and LAST LINE of the file so you know exactly where to paste in VS Code.
+ SECTION 0 — EMERGENCY FIX: Layout Crash
+Your site is showing: 'The default export is not a React Component in /layout'. This happens when the metadata export in layout.js is malformed or the RootLayout function was accidentally removed. One terminal command fixes it completely.
+
+WHY THIS HAPPENED: BR DEP VIII asked you to update the metadata block in layout.js. If the cat << EOF command was run incorrectly, it may have replaced the entire file with only the metadata object — deleting the RootLayout function that Next.js requires.
+
+THE FIX — run this single terminal command
+This replaces layout.js with the complete correct file: metadata + RootLayout function + font loading + NewsBanner + Nav. Copy the entire block below, paste it in terminal, press Enter.
+TERMINAL: PASTE THIS ENTIRE BLOCK AT ONCE
+cd ~/Desktop/banger-ratios
+cat << 'EOF' > src/app/layout.js
+// File: src/app/layout.js
+import './globals.css'
+import Nav from './components/Nav'
+import NewsBanner from './components/NewsBanner'
+
+export const metadata = {
+  title: 'Banger Ratios',
+  description: 'Rate albums track by track. The Banger Ratio reveals which albums actually deliver.',
+  metadataBase: new URL('https://www.bangerratios.com'),
+  openGraph: {
+    title: 'Banger Ratios — Community Album Ratings',
+    description: 'Rate albums track by track. The Banger Ratio reveals which albums actually deliver.',
+    url: 'https://www.bangerratios.com',
+    siteName: 'Banger Ratios',
+    images: [{ url: '/og-image.png', width: 1200, height: 630, alt: 'Banger Ratios' }],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Banger Ratios — Community Album Ratings',
+    description: 'Rate albums track by track. The Banger Ratio reveals which albums actually deliver.',
+    images: ['/og-image.png'],
+  },
+}
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>
+        <NewsBanner />
+        <Nav />
+        {children}
+      </body>
+    </html>
+  )
+}
+EOF
+
+VERIFY THE FIX: After pasting, run: npm run dev — open localhost:3000. If the site loads with the pink news banner and nav, it is fixed. Then run: npm run build — if no errors, run: git add . && git commit -m 'fix layout.js crash' && git push
+
+VS Code fallback — if you prefer not to use terminal for this
+Open src/app/layout.js in VS Code. The FIRST LINE you are looking for is:
+// File: src/app/layout.js   (or import './globals.css' if the comment is missing)
+The LAST LINE you are looking for is:
+}
+Select ALL (Cmd+A), delete everything, then paste the full file contents from the terminal command above (everything between the first cat line and EOF).
+
+IMPORTANT: Do NOT add the words cat << EOF or EOF into the file itself. Those are terminal instructions, not file content. The file content starts with // File: src/app/layout.js and ends with the closing }.
+ SECTION 1 — Password Settings in Supabase
+BR DEP VIII pointed you to Authentication → Policies for password settings. That was wrong — Policies is for Row Level Security. The password strength settings are in a completely different location.
+
+CORRECT LOCATION: supabase.com → your project → Authentication → Auth Providers → Email (not Policies, not Settings)
+
+Step-by-step — finding password settings
+1.	Go to supabase.com and log into your project
+2.	In the left sidebar, click Authentication
+3.	In the Authentication submenu, click Providers (NOT Policies)
+4.	You will see a list of providers. Find Email — it should be the first one and already enabled
+5.	Click on Email to expand its settings
+6.	Scroll down within the Email provider settings
+7.	You will see: Minimum password length — set this to 8
+8.	Below that: Password Requirements — check these boxes:
+•	Require uppercase letters
+•	Require lowercase letters
+•	Require numbers
+•	Require special characters
+9.	Scroll to the bottom of the Email provider settings and click Save
+
+IF YOU CANNOT FIND IT: Supabase sometimes moves settings between dashboard versions. If the Email provider does not show password settings, go to Authentication → Configuration → Email Auth. The Minimum password length field will be there.
+
+The client-side password check (already in BR DEP VIII)
+In addition to the Supabase setting, the auth/page.js code from BR DEP VIII already validates passwords before they are sent to Supabase. This gives users live feedback as they type. Confirm this code is in your auth/page.js by running:
+grep -n 'validatePassword' ~/Desktop/banger-ratios/src/app/auth/page.js
+If that command returns nothing, the validatePassword function is missing. Run this to add it:
+TERMINAL: UPDATE AUTH/PAGE.JS WITH PASSWORD VALIDATOR
+cd ~/Desktop/banger-ratios
+cat << 'EOF' > src/app/auth/page.js
+// File: src/app/auth/page.js
+'use client'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+
+function validatePassword(pw) {
+  const errors = []
+  if (pw.length < 8) errors.push('At least 8 characters')
+  if (!/[A-Z]/.test(pw)) errors.push('One uppercase letter (e.g. A, B, C)')
+  if (!/[0-9]/.test(pw)) errors.push('One number (e.g. 1, 2, 3)')
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"|,.<>\/?]/.test(pw))
+    errors.push('One special character (e.g. !, @, #, $)')
+  return errors
+}
+
+export default function Auth() {
+  const router = useRouter()
+  const [mode, setMode] = useState('signin')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [username, setUsername] = useState('')
+  const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) router.push('/profile')
+    })
+  }, [])
+
+  const signIn = async () => {
+    if (!email || !password) { setMessage('Please enter email and password.'); return }
+    setLoading(true)
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) { setMessage(error.message); setLoading(false) }
+    else { router.push('/profile') }
+  }
+
+  const signUp = async () => {
+    if (!email || !password) { setMessage('Please enter email and password.'); return }
+    const pwErrors = validatePassword(password)
+    if (pwErrors.length > 0) {
+      setMessage('Password needs: ' + pwErrors.join(' · '))
+      return
+    }
+    setLoading(true)
+    const { data, error } = await supabase.auth.signUp({ email, password })
+    if (error) { setMessage(error.message); setLoading(false); return }
+    if (data?.user) {
+      await supabase.from('profiles').upsert({
+        id: data.user.id,
+        username: username || email.split('@')[0],
+        email,
+      }, { onConflict: 'id', ignoreDuplicates: true })
+    }
+    setMessage('Account created! Check your email to confirm, then sign in.')
+    setLoading(false)
+  }
+
+  const onKey = (e) => { if (e.key === 'Enter') mode === 'signin' ? signIn() : signUp() }
+  const pwErrors = mode === 'signup' && password.length > 0 ? validatePassword(password) : []
+
+  return (
+    <main className="section" style={{ paddingTop: '5rem' }}>
+      <div style={{ maxWidth: 440, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
+          <h1 style={{ fontSize: '2.2rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+            {mode === 'signin' ? 'Welcome back' : 'Join Banger Ratios'}
+          </h1>
+          <p style={{ color: 'var(--gray-text)' }}>
+            {mode === 'signin' ? 'Sign in to rate albums.' : 'Create an account to start rating.'}
+          </p>
+        </div>
+        <div style={{ background: 'white', padding: '2.5rem', borderRadius: '20px',
+          border: '1px solid var(--border)', boxShadow: '0 4px 24px rgba(0,0,0,0.05)' }}>
+          <div style={{ display: 'flex', marginBottom: '2rem',
+            border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+            {['signin','signup'].map(m => (
+              <button key={m} onClick={() => { setMode(m); setMessage('') }} style={{
+                flex: 1, padding: '0.6rem', border: 'none', cursor: 'pointer',
+                background: mode === m ? 'var(--pink)' : 'white',
+                color: mode === m ? 'white' : 'var(--gray-text)',
+                fontWeight: 600, fontSize: '0.85rem', fontFamily: 'inherit',
+              }}>{m === 'signin' ? 'Sign In' : 'Create Account'}</button>
+            ))}
+          </div>
+          {mode === 'signup' && (
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.4rem' }}>Username</label>
+              <input className="input" type="text" placeholder="your_username"
+                value={username} onChange={e => setUsername(e.target.value)} onKeyDown={onKey} />
+            </div>
+          )}
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.4rem' }}>Email</label>
+            <input className="input" type="email" placeholder="you@example.com"
+              value={email} onChange={e => setEmail(e.target.value)} onKeyDown={onKey} />
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.4rem' }}>Password</label>
+            <input className="input" type="password"
+              placeholder={mode === 'signup' ? 'Min 8 chars, uppercase, number, symbol' : '••••••••'}
+              value={password} onChange={e => setPassword(e.target.value)} onKeyDown={onKey} />
+          </div>
+          {pwErrors.length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              {pwErrors.map((err,i) => (
+                <p key={i} style={{ color: '#dc2626', fontSize: '0.78rem', marginTop: '0.2rem' }}>✗ {err}</p>
+              ))}
+            </div>
+          )}
+          {pwErrors.length === 0 && mode === 'signup' && password.length > 0 && (
+            <p style={{ color: '#00B84D', fontSize: '0.78rem', marginBottom: '1rem' }}>✓ Password looks good</p>
+          )}
+          <div style={{ marginBottom: '1.5rem' }} />
+          <button onClick={mode === 'signin' ? signIn : signUp} disabled={loading}
+            className="primary-btn" style={{ width: '100%', textAlign: 'center', opacity: loading ? 0.7 : 1 }}>
+            {loading ? 'Please wait...' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+          </button>
+          {message && (
+            <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', borderRadius: '8px',
+              background: message.includes('created') ? '#f0fff4' : '#fff0f5',
+              color: message.includes('created') ? '#00B84D' : '#cc0044',
+              fontSize: '0.85rem', fontWeight: 500 }}>
+              {message}
+            </div>
+          )}
+        </div>
+        <p style={{ textAlign: 'center', marginTop: '1.5rem', color: 'var(--gray-text)', fontSize: '0.82rem' }}>
+          By signing in, you agree to help us expose mid albums.
+        </p>
+      </div>
+    </main>
+  )
+}
+EOF
+ SECTION 2 — Open Graph Link Preview (Do After Logo)
+The layout.js fix in Section 0 already includes the Open Graph metadata. What is left is creating the actual preview image and placing it in the right folder. Do this section after you have your logo or branding ready.
+
+Step 1 — Create your og-image.png
+This is the image that appears when someone shares bangerratios.com on iMessage, Twitter, Instagram DMs, Slack, or Discord. Size must be exactly 1200 x 630 pixels.
+10.	Go to canva.com (free account is enough)
+11.	Click Create a design → Custom size → enter 1200 x 630 px → Create
+12.	Set the background to black: #111111
+13.	Add text: BANGER RATIOS — use a bold white font, large (around 80–100pt)
+14.	Add a pink element: a small square or line in #FF0066 near the logo text
+15.	Add smaller text: Community-powered music ratings — in light gray
+16.	Download → PNG format → name the file og-image.png exactly
+
+Step 2 — Place the file in your project
+The file must go in the public folder at the root of your project. Run this to confirm the public folder exists:
+ls ~/Desktop/banger-ratios/public
+Then drag og-image.png from your Downloads folder into Finder → Desktop → banger-ratios → public. Or use this terminal command to move it:
+mv ~/Downloads/og-image.png ~/Desktop/banger-ratios/public/og-image.png
+
+Step 3 — Push and test
+cd ~/Desktop/banger-ratios
+git add .
+git commit -m "add og-image for link preview"
+git push
+After Vercel deploys (~60 seconds), test your preview at:
+# Open this URL in your browser to see how your link looks when shared:
+# https://www.opengraph.xyz/url/https%3A%2F%2Fwww.bangerratios.com
+NOTE: The og-image will NOT appear at localhost:3000 — it only works on the live site because OpenGraph requires a public URL. Always test with opengraph.xyz after pushing to Vercel.
+ SECTION 3 — Last.fm API Key & News Banner
+Last.fm is free, requires no credit card, and gives you real chart data — trending tracks, top albums by genre, and artist info. This wires it into your pink news banner so it shows live music news instead of fallback headlines.
+
+Step 1 — Get your free Last.fm API key
+17.	Open your browser and go to: last.fm/api/account/create
+18.	You may need to create a free Last.fm account first if you do not have one
+19.	Fill in the form:
+•	Contact email: your email address
+•	Application name: Banger Ratios
+•	Application description: Community music rating platform
+•	Application homepage URL: https://www.bangerratios.com
+•	Callback URL: leave blank
+20.	Click Submit. You will see your API key immediately on the next page.
+21.	Copy the API key — it looks like: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
+22.	Keep this page open — you will paste the key in Step 2
+
+FREE TIER: Last.fm API is completely free with no usage limits for personal/small projects. You never need to enter a credit card.
+
+Step 2 — Add the key to your environment files
+Run this command but REPLACE your_actual_key_here with your real Last.fm API key before pressing Enter:
+# REPLACE your_actual_key_here with your real key from last.fm
+echo 'NEXT_PUBLIC_LASTFM_KEY=your_actual_key_here' >> ~/Desktop/banger-ratios/.env.local
+Verify it was added correctly:
+cat ~/Desktop/banger-ratios/.env.local
+You should see both your Supabase keys AND the new Last.fm key listed.
+
+Step 3 — Add the key to Vercel
+23.	Go to vercel.com → your banger-ratios project → Settings → Environment Variables
+24.	Click Add New
+25.	Name: NEXT_PUBLIC_LASTFM_KEY
+26.	Value: paste your actual Last.fm API key
+27.	Make sure all 3 boxes are checked: Production, Preview, Development
+28.	Click Save
+29.	Go to Deployments → three dots on latest deploy → Redeploy
+
+Step 4 — Update NewsBanner.js to use the key
+TERMINAL: REPLACE NEWSBANNER.JS WITH LIVE LAST.FM INTEGRATION
+cd ~/Desktop/banger-ratios
+mkdir -p src/app/components
+cat << 'EOF' > src/app/components/NewsBanner.js
+// File: src/app/components/NewsBanner.js
+'use client'
+import { useEffect, useState } from 'react'
+
+const FALLBACK = [
+  'Kendrick Lamar leads all-time leaderboard with 91% Banger Ratio',
+  'Frank Ocean Blonde holds #1 — 96% community score',
+  'New: follow friends and see their ratings in real time',
+  'Tyler, the Creator IGOR — 93% Banger Ratio from 800+ raters',
+  'Chappell Roan rises to 87% — The Rise and Fall of a Midwest Princess',
+  'SZA SOS holds at 89% — community favourite for R&B',
+  'Rate an album today — contribute to the community leaderboard',
+  'New releases added weekly — check the Releases tab',
+]
+
+export default function NewsBanner() {
+  const [headlines, setHeadlines] = useState(FALLBACK)
+
+  useEffect(() => {
+    const key = process.env.NEXT_PUBLIC_LASTFM_KEY
+    if (!key || key === 'your_actual_key_here') return
+    fetch(`https://ws.audioscrobbler.com/2.0/?method=chart.gettoptracks&api_key=${key}&format=json&limit=8`)
+      .then(r => r.json())
+      .then(data => {
+        const tracks = data?.tracks?.track || []
+        if (tracks.length > 0) {
+          const live = tracks.map(t =>
+            `Trending: ${t.name} by ${t.artist.name} — rate the album on Banger Ratios`
+          )
+          setHeadlines([...live, ...FALLBACK.slice(0, 3)])
+        }
+      })
+      .catch(() => {}) // silently use fallback
+  }, [])
+
+  const ticker = [...headlines, ...headlines]
+  return (
+    <div className="news-bar">
+      <div className="news-bar-track">
+        {ticker.map((h, i) => (
+          <span key={i} className="news-bar-item">
+            {h}<span className="news-bar-sep">◆</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+EOF
+
+VS Code fallback — if you prefer: FIRST LINE: // File: src/app/components/NewsBanner.js   LAST LINE: the final closing } of the file. Select all (Cmd+A), delete, paste the content between the first cat line and EOF above.
+ SECTION 4 — Fix Git Identity Warning
+Your commits are showing: 'Committer: Isaac Lindell <isaaclindell@Isaacs-MacBook-Air.local>'. This means Git is guessing your name and email from your Mac system settings. It works, but the warning is annoying and your commits show the wrong email on GitHub. One command fixes it permanently.
+
+Set your Git identity globally
+Run these two commands. Replace the example name and email with your actual ones:
+git config --global user.name "James Filmer"
+git config --global user.email "you@youremail.com"
+Verify it worked:
+git config --global --list
+You should see user.name and user.email listed. The warning will not appear on your next commit.
+
+OPTIONAL — fix the author on your last commit: git commit --amend --reset-author --no-edit   then   git push --force-with-lease
+ SECTION 5 — Correct Build Cache Clear Command
+In your terminal output you ran: rm -rf next — this deletes a folder called 'next' which probably did not exist. The correct command has a dot before 'next'. The .next folder (with the dot) is Next.js's build cache. Always use:
+
+# CORRECT — clears the Next.js build cache
+rm -rf .next
+
+# WRONG — tries to delete a folder called 'next' (not the cache)
+rm -rf next
+
+The dot makes it a hidden folder. You can confirm the build cache exists by running:
+ls -la ~/Desktop/banger-ratios | grep .next
+If you see a .next folder listed, the cache exists. After running rm -rf .next it will be gone, and npm run dev will rebuild it fresh.
+
+WHEN TO CLEAR THE CACHE: Only clear .next if you see 'weird errors' that do not match your code changes. Most of the time you do not need to clear it — npm run dev watches for changes automatically.
+ SECTION 6 — Final Push & Verify Checklist
+After completing sections 0–5, do these steps in order.
+
+Push everything to GitHub
+cd ~/Desktop/banger-ratios
+npm run build
+# Must show: Compiled successfully (or Route compiled successfully)
+# If you see errors, fix them before the next step
+
+git add .
+git commit -m "BR DEP X: layout fix, password validator, newsbanner, git identity"
+git push
+
+What to check on localhost:3000 before pushing
+✓	Pink news banner at the top scrolling horizontally — no emoji, just text + diamond separators
+✓	Nav shows HOME, ALBUMS, ARTISTS, LEADERBOARD, RELEASES, FRIENDS, ABOUT, MERCH, SIGN IN
+✓	Sign In button is a pink pill shape
+✓	Homepage loads without any red error in the terminal
+✓	Go to /auth — Create Account tab — type a weak password — do you see red error messages under the password field?
+✓	Type a strong password (e.g. Banger2024!) — does the green checkmark appear?
+✓	npm run build returns no errors
+
+What to check on www.bangerratios.com after pushing
+✓	Site loads — no crash, no blank screen
+✓	News banner is scrolling with Last.fm tracks (if key is set) or fallback headlines
+✓	Go to opengraph.xyz — paste your URL — does the link preview show your og-image?
+
+Your project info — quick reference
+Item	Value
+Local project folder	~/Desktop/banger-ratios
+Live site	https://www.bangerratios.com
+Supabase dashboard	supabase.com → Authentication → Providers → Email
+Password settings location	Authentication → Providers → Email → expand → Minimum password length
+Vercel env vars	vercel.com → banger-ratios → Settings → Environment Variables
+Test link previews	https://www.opengraph.xyz
+Last.fm API signup	https://www.last.fm/api/account/create
+og-image.png location	~/Desktop/banger-ratios/public/og-image.png
+Build cache clear	rm -rf .next   (note the dot — not rm -rf next)
+
+Troubleshooting
+Problem	Solution
+layout error still showing	Did you paste the cat << EOF block completely including all closing brackets? Run: cat src/app/layout.js and check the last line is a single }
+Last.fm banner not showing live data	Check .env.local has NEXT_PUBLIC_LASTFM_KEY set. Restart npm run dev after editing .env.local (Ctrl+C then npm run dev again).
+og-image not appearing	File must be named og-image.png exactly (not og-image (1).png etc). Must be in public/ folder. Only visible on live site not localhost.
+Password validator not showing	The validatePassword function must be defined before the Auth() function in auth/page.js. Run: grep -n validatePassword src/app/auth/page.js to check.
+git push still shows identity warning	Run: git config --global user.name and git config --global user.email to confirm they are set correctly.
+npm run build fails	Read the error message — it will name the exact file and line. Most common: a missing import or unclosed JSX tag.
+Vercel deployed but site still broken	Check Vercel → your project → Settings → Environment Variables. All keys must be set there too, not just .env.local.
+
+
+■ BANGER RATIOS  ·  BR DEP X  ·  jamestfilmer-ops  ·  bangerratios.com
+
