@@ -1,0 +1,110 @@
+Last login: Tue Feb 24 21:08:49 on ttys000
+isaaclindell@Isaacs-MacBook-Air ~ % cd ~/Desktop/banger-ratios
+npm install @supabase/supabase-js
+
+up to date, audited 368 packages in 790ms
+
+144 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+isaaclindell@Isaacs-MacBook-Air banger-ratios % git add .
+git commit -m "add supabase dependency"
+git push
+[main f98b305] add supabase dependency
+ 3 files changed, 188 insertions(+), 3 deletions(-)
+ create mode 100644 BR DEPL GUIDES/Current SQL.txt
+To https://github.com/jamestfilmer-ops/banger-ratios.git
+ ! [rejected]        main -> main (fetch first)
+error: failed to push some refs to 'https://github.com/jamestfilmer-ops/banger-ratios.git'
+hint: Updates were rejected because the remote contains work that you do not
+hint: have locally. This is usually caused by another repository pushing to
+hint: the same ref. If you want to integrate the remote changes, use
+hint: 'git pull' before pushing again.
+hint: See the 'Note about fast-forwards' in 'git push --help' for details.
+isaaclindell@Isaacs-MacBook-Air banger-ratios % npm run build
+
+> banger-ratios@0.1.0 build
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 1412.5ms
+✓ Finished TypeScript in 40.4ms    
+✓ Collecting page data using 7 workers in 221.4ms    
+✓ Generating static pages using 7 workers (12/12) in 130.7ms
+✓ Finalizing page optimization in 7.4ms    
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /about
+├ ƒ /album/[id]
+├ ○ /artists
+├ ○ /auth
+├ ○ /leaderboards
+├ ○ /merch
+├ ○ /profile
+├ ○ /releases
+└ ○ /terms
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+isaaclindell@Isaacs-MacBook-Air banger-ratios % git pull --rebase origin main
+git push
+remote: Enumerating objects: 50, done.
+remote: Counting objects: 100% (50/50), done.
+remote: Compressing objects: 100% (19/19), done.
+remote: Total 36 (delta 13), reused 36 (delta 13), pack-reused 0 (from 0)
+Unpacking objects: 100% (36/36), 14.42 KiB | 421.00 KiB/s, done.
+From https://github.com/jamestfilmer-ops/banger-ratios
+ * branch            main       -> FETCH_HEAD
+   ec79c5e..5c4e592  main       -> origin/main
+Auto-merging package-lock.json
+CONFLICT (content): Merge conflict in package-lock.json
+error: could not apply f98b305... add supabase dependency
+hint: Resolve all conflicts manually, mark them as resolved with
+hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
+hint: You can instead skip this commit: run "git rebase --skip".
+hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Could not apply f98b305... # add supabase dependency
+fatal: You are not currently on a branch.
+To push the history leading to the current (detached HEAD)
+state now, use
+
+    git push origin HEAD:<name-of-remote-branch>
+
+isaaclindell@Isaacs-MacBook-Air banger-ratios % git checkout --theirs package-lock.json
+Updated 1 path from the index
+isaaclindell@Isaacs-MacBook-Air banger-ratios % git add package-lock.json
+isaaclindell@Isaacs-MacBook-Air banger-ratios % git rebase --continue
+hint: Waiting for your editor to close the file... 
+add supabase dependency
+
+# Conflicts:
+#       package-lock.json
+         
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# interactive rebase in progress; onto 5c4e592
+# Last command done (1 command done):
+#    pick f98b305 # add supabase dependency
+# No commands remaining.
+# You are currently rebasing branch 'main' on '5c4e592'.
+#   
+# Changes to be committed:
+#       new file:   BR DEPL GUIDES/Current SQL.txt 
+#       modified:   package-lock.json
+#       modified:   src/app/page.js
+#   
+~                                                                               
+~                                                                               
+~                                                                               
+~                                                                               
+"~/Desktop/banger-ratios/.git/COMMIT_EDITMSG" 19L, 545B

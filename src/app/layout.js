@@ -1,11 +1,20 @@
 import './globals.css'
 import Nav from './components/Nav'
- 
+import NewsBanner from './components/NewsBanner'
+
 export const metadata = {
   title: 'Banger Ratios — The Real Measure of Musical Consistency',
   description: 'Rate every track 1-7. See the Banger Ratio. Settle the debate.',
+  openGraph: {
+    title: 'Banger Ratios',
+    description: 'Rate every track 1-7. See the Banger Ratio.',
+    url: 'https://www.bangerratios.com',
+    siteName: 'Banger Ratios',
+    images: [{ url: '/og-image.png', width: 1200, height: 630 }],
+    type: 'website',
+  },
 }
- 
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
@@ -18,6 +27,7 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body>
+        <NewsBanner />
         <Nav />
         {children}
       </body>
