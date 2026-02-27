@@ -10,6 +10,8 @@ const tabs = [
   { href: '/releases',     label: 'New Releases' },
   { href: '/friends',      label: 'Friends' },
   { href: '/data',         label: 'Data' },
+  { href: '/feed',         label: 'Feed' },
+  { href: '/share',        label: 'Share' },
   { href: '/merch',        label: 'Merch' },
   { href: '/about',        label: 'About' },
 ]
