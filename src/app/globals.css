@@ -212,6 +212,7 @@ input, textarea { font-family: inherit; }
   .hamburger         { display: flex !important; }
   .desktop-nav       { display: none !important; }
   main, .page-content {
-    padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important;
+.mobile-bottom-nav { display: block !important; position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; }
   }
 }
+
