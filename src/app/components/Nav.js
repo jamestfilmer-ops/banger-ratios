@@ -6,10 +6,10 @@ import { supabase } from '@/lib/supabase'
 
 const tabs = [
   { href: '/',             label: 'Home' },
-  { href: '/artists',      label: 'Artists' },
   { href: '/leaderboards', label: 'Leaderboards' },
   { href: '/releases',     label: 'New Releases' },
   { href: '/friends',      label: 'Friends' },
+  { href: '/data',         label: 'Data' },
   { href: '/merch',        label: 'Merch' },
   { href: '/about',        label: 'About' },
 ]
@@ -27,7 +27,6 @@ export default function Nav() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Close menu on route change
   useEffect(() => { setMenuOpen(false) }, [pathname])
 
   const isActive = (href) => href === '/' ? pathname === '/' : pathname.startsWith(href)
@@ -51,6 +50,7 @@ export default function Nav() {
           display: 'flex', alignItems: 'center',
           justifyContent: 'space-between', height: 56,
         }}>
+
           {/* Logo */}
           <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{
@@ -65,11 +65,11 @@ export default function Nav() {
           </a>
 
           {/* Desktop tabs */}
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}
+          <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}
             className="desktop-nav">
             {tabs.map(t => (
               <a key={t.href} href={t.href} style={{
-                padding: '6px 14px', borderRadius: 8, fontSize: 13,
+                padding: '6px 12px', borderRadius: 8, fontSize: 13,
                 fontWeight: isActive(t.href) ? 600 : 400,
                 color: isActive(t.href) ? 'var(--pink)' : 'var(--gray-600)',
                 background: isActive(t.href) ? 'var(--pink-subtle)' : 'transparent',
@@ -101,7 +101,7 @@ export default function Nav() {
             )}
           </div>
 
-          {/* Hamburger button — mobile only */}
+          {/* Hamburger — mobile only */}
           <button
             onClick={() => setMenuOpen(o => !o)}
             className="hamburger"

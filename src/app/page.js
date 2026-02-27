@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useToast } from './components/Toast'
-import { LeaderboardSkeleton, AlbumGridSkeleton } from './components/Skeleton'
+import { useToast } from './components/ToastContext'
+import { LeaderboardRowSkeleton } from './components/Skeleton'
 
 const BADGES = {
   classic: { label: '💎 Certified Classic', min: 90 },
@@ -304,7 +304,7 @@ export default function Home() {
         {activeTab === 'top' && (
           <section>
             {topLoading ? (
-              <LeaderboardSkeleton count={8} />
+              <LeaderboardRowSkeleton count={8} />
             ) : topAlbums.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '60px 0' }}>
                 <p style={{ fontSize: 40, marginBottom: 12 }}>🎵</p>

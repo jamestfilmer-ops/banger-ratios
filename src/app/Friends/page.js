@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useToast } from '../components/Toast'
+import { useToast } from '../components/ToastContext'
 
 export default function FriendsPage() {
   const [user, setUser]             = useState(null)
