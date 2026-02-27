@@ -182,3 +182,36 @@ input, textarea { font-family: inherit; }
   .hamburger   { display:flex !important; }
   .mobile-menu { display:block; }
 }
+/* Mobile bottom navigation bar */
+.mobile-bottom-bar {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 64px;
+  background: rgba(255,255,255,0.97);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--gray-200);
+  z-index: 100;
+  flex-direction: row;
+  /* Safe area for iPhone home indicator */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+ 
+@media (max-width: 640px) {
+  .desktop-nav  { display: none !important; }
+  .hamburger    { display: flex !important; }
+  .mobile-menu  { display: block; }
+  .mobile-bottom-bar { display: flex; }
+  /* Push page content up so it's not hidden behind the bar */
+  body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+}
+/* ── Mobile bottom nav ─────────────────── */
+@media (max-width: 768px) {
+  .mobile-bottom-nav { display: block !important; }
+  .hamburger         { display: flex !important; }
+  .desktop-nav       { display: none !important; }
+  main, .page-content {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important;
+  }
+}
