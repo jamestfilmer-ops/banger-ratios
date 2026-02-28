@@ -1,5 +1,5 @@
-// FILE: src/app/components/ArtistPanel.js
 'use client'
+import { useState, useEffect } from 'react'
 
 // Artists confirmed deceased — show Legacy link instead of concert tickets
 // Add names exactly as they appear in iTunes artist_name field
@@ -17,6 +17,24 @@ const DECEASED_ARTISTS = new Set([
 ])
 
 export default function ArtistPanel({ artist, albums, onClose }) {
+  const [bio, setBio] = useState(null)
+
+  useEffect(() => {
+    if (!artist) { setBio(null); return }
+    const name = encodeURIComponent(artist)
+    fetch(`https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=${name}&api_key=f6de418e7c3b44cc5f80b1a5e11e5823&format=json`)
+      .then(r => r.json())
+      .then(d => {
+        const raw = d?.artist?.bio?.summary || ''
+        // Strip the "Read more on Last.fm" link that Last.fm appends
+        const clean = raw.replace(/<a[^>]*>.*?<\/a>/gi, '').replace(/\s+/g, ' ').trim()
+        // Take only the first 2 sentences
+        const sentences = clean.match(/[^.!?]+[.!?]+/g) || []
+        setBio(sentences.slice(0, 2).join(' ').trim() || null)
+      })
+      .catch(() => setBio(null))
+  }, [artist])
+
   if (!artist) return null
 
   const topAlbums = albums
@@ -66,6 +84,18 @@ export default function ArtistPanel({ artist, albums, onClose }) {
                 </span>
               )}
             </h2>
+            {bio && (
+              <p style={{
+                fontSize: 13,
+                color: 'var(--gray-text)',
+                lineHeight: 1.6,
+                marginTop: 6,
+                marginBottom: 12,
+                fontStyle: 'italic',
+              }}>
+                {bio}
+              </p>
+            )}
             <p style={{ fontSize: 13, color: 'var(--gray-text)' }}>
               {topAlbums.length} album{topAlbums.length !== 1 ? 's' : ''} rated on Banger Ratios
             </p>

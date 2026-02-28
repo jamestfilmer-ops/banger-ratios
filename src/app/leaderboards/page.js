@@ -212,6 +212,7 @@ function BattleSection() {
   )
 }
 
+
 export default function LeaderboardsPage() {
   const [albums,         setAlbums]         = useState([])
   const [filter,         setFilter]         = useState('all')
@@ -331,7 +332,7 @@ export default function LeaderboardsPage() {
             </div>
           )}
 
-          {/* Album list — each card is now fully clickable with pink flash on tap */}
+          {/* Album list */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {displayedAlbums.map((a, i) => {
               const badge = getBadge(a.banger_ratio || 0)
@@ -341,9 +342,7 @@ export default function LeaderboardsPage() {
                   href={`/album/${a.itunes_collection_id}`}
                   className="lb-card"
                   onClick={e => {
-                    // If user clicked the artist name, open ArtistPanel instead of navigating
                     if (e.target.dataset.artist) { e.preventDefault(); return }
-                    // Pink flash animation
                     e.currentTarget.classList.remove('lb-card-flash')
                     void e.currentTarget.offsetWidth
                     e.currentTarget.classList.add('lb-card-flash')
@@ -395,7 +394,7 @@ export default function LeaderboardsPage() {
                     </p>
                   </div>
 
-                  {/* Score + badge */}
+                  {/* Score + grade card + badge */}
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <p style={{ fontSize: 20, fontWeight: 800, color: 'var(--pink)',
                       marginBottom: 2, lineHeight: 1 }}>
