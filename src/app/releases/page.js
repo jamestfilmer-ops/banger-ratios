@@ -3,10 +3,6 @@ import { useState, useEffect } from 'react'
 
 const GENRES = ['All', 'Hip-Hop/Rap', 'Pop', 'R&B/Soul', 'Rock', 'Alternative', 'Country', 'Electronic', 'Latin', 'K-Pop']
 
-// Each search is TAGGED with a genre.
-// This means results from "electronic dance album 2025" are labeled Electronic.
-// When you click the Electronic filter, it shows everything tagged Electronic.
-// This is more reliable than reading iTunes genre ID fields (those are inconsistent).
 const SEARCHES = [
   { term: 'hip hop rap album 2025',       genre: 'Hip-Hop/Rap' },
   { term: 'hip hop album 2026',           genre: 'Hip-Hop/Rap' },
@@ -31,32 +27,50 @@ const SEARCHES = [
   { term: 'album release 2025',           genre: null },
 ]
 
+// ─── PROMOTED ────────────────────────────────────────────────────────────────
+// 'link' goes to the artist's own site — clicking opens their website.
+// To add a new placement: copy a block, fill in the details.
 const PROMOTED_CONFIG = [
   {
     collectionId: 1734980417,
     name: 'Radical Optimism',
-   artist: 'Dua Lipa',
-   releaseDate: 'May 3, 2024',
-   link: 'https://dualipa.com',
-   fallbackArtwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/09/5c/2b/095c2b4e-3b5e-7e2e-0f33-e9a0ee8e4e4a/24UMGIM50410.rgb.jpg/600x600bb.jpg',
- },
- {
-  collectionId: 1781270319,
-   name: 'GNX',
-   artist: 'Kendrick Lamar',
-   releaseDate: 'Nov 22, 2024',
-   link: 'https://oklama.com',
-   fallbackArtwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/1d/3e/8f/1d3e8f4b-5c2a-9e7f-3b1a-8e4f2d6c9a0b/24UMGIM93351.rgb.jpg/600x600bb.jpg',
- },
+    artist: 'Dua Lipa',
+    releaseDate: 'May 3, 2024',
+    link: 'https://dualipa.com',
+    fallbackArtwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/09/5c/2b/095c2b4e-3b5e-7e2e-0f33-e9a0ee8e4e4a/24UMGIM50410.rgb.jpg/600x600bb.jpg',
+  },
   {
-   collectionId: 1821337734,
-   name: 'FRUIT',
-   artist: 'Madeline Edwards',
-   releaseDate: 'Jul 11, 2025',
-   link: 'https://madelineedwardsmusic.com',
-   fallbackArtwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/2a/4b/6c/2a4b6c8d-9e1f-3a2b-7c4d-5e6f8a0b2c3d/196871234567.jpg/600x600bb.jpg',
- },
+    collectionId: 1781270319,
+    name: 'GNX',
+    artist: 'Kendrick Lamar',
+    releaseDate: 'Nov 22, 2024',
+    link: 'https://oklama.com',
+    fallbackArtwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/1d/3e/8f/1d3e8f4b-5c2a-9e7f-3b1a-8e4f2d6c9a0b/24UMGIM93351.rgb.jpg/600x600bb.jpg',
+  },
+  {
+    collectionId: 1821337734,
+    name: 'FRUIT',
+    artist: 'Madeline Edwards',
+    releaseDate: 'Jul 11, 2025',
+    link: 'https://madelineedwardsmusic.com',
+    fallbackArtwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/2a/4b/6c/2a4b6c8d-9e1f-3a2b-7c4d-5e6f8a0b2c3d/196871234567.jpg/600x600bb.jpg',
+  },
 ]
+
+// iTunes genre name → our filter labels
+const ITUNES_GENRE_MAP = {
+  'hip-hop/rap': 'Hip-Hop/Rap', 'hip hop': 'Hip-Hop/Rap', 'rap': 'Hip-Hop/Rap',
+  'urban contemporary': 'Hip-Hop/Rap', 'trap': 'Hip-Hop/Rap',
+  'pop': 'Pop', 'dance pop': 'Pop', 'synth-pop': 'Pop', 'k-pop': 'K-Pop',
+  'r&b/soul': 'R&B/Soul', 'r&b': 'R&B/Soul', 'soul': 'R&B/Soul',
+  'contemporary r&b': 'R&B/Soul', 'neo soul': 'R&B/Soul',
+  'rock': 'Rock', 'alternative rock': 'Rock', 'hard rock': 'Rock',
+  'indie rock': 'Alternative', 'alternative': 'Alternative', 'indie pop': 'Alternative',
+  'country': 'Country', 'country & folk': 'Country', 'americana': 'Country',
+  'electronic': 'Electronic', 'dance': 'Electronic', 'edm': 'Electronic',
+  'electronica': 'Electronic', 'house': 'Electronic', 'techno': 'Electronic',
+  'latin': 'Latin', 'reggaeton': 'Latin', 'latin pop': 'Latin',
+}
 
 const CUTOFF_MS   = 18 * 30 * 24 * 60 * 60 * 1000
 const CUTOFF_DATE = new Date(Date.now() - CUTOFF_MS)
@@ -87,13 +101,21 @@ export default function ReleasesPage() {
     const resolved = await Promise.all(
       PROMOTED_CONFIG.map(async (p) => {
         try {
-          const res  = await fetch(`https://itunes.apple.com/lookup?id=${p.collectionId}&entity=album`)
+          // No &entity param — returns the collection record directly
+          const res  = await fetch(`https://itunes.apple.com/lookup?id=${p.collectionId}`)
           const data = await res.json()
-          const hit  = data?.results?.[0]
-          return { ...p, artwork: hit?.artworkUrl100?.replace('100x100', '600x600') || null }
-        } catch { return { ...p, artwork: null } }
+          // Find the album record specifically (not artist or track)
+          const hit  = data?.results?.find(r => r.wrapperType === 'collection')
+                    || data?.results?.[0]
+          const url  = hit?.artworkUrl100
+          if (url) return { ...p, artwork: url.replace('100x100', '600x600') }
+          return { ...p, artwork: p.fallbackArtwork }
+        } catch {
+          return { ...p, artwork: p.fallbackArtwork }
+        }
       })
     )
+    // Always show all promoted items as long as they have some artwork
     setPromoted(resolved.filter(p => p.artwork))
   }
 
@@ -108,10 +130,9 @@ export default function ReleasesPage() {
             .catch(() => [])
         )
       )
-      const seen        = new Set()
-      const seenArtists = new Set()
-      const genreMap    = new Map()
 
+      // Build genre sets per album
+      const genreMap = new Map()
       const flat = results.flat().filter(a => {
         if (isJunk(a)) return false
         if (!a.releaseDate) return false
@@ -121,28 +142,29 @@ export default function ReleasesPage() {
 
       for (const a of flat) {
         if (!genreMap.has(a.collectionId)) genreMap.set(a.collectionId, new Set())
+        // Tag from the search term that found it
         if (a._sourceGenre) genreMap.get(a.collectionId).add(a._sourceGenre)
+        // Tag from iTunes' own genre field via the map
         if (a.primaryGenreName) {
-          const name = a.primaryGenreName
-          for (const g of GENRES) {
-            if (g === 'All') continue
-            if (name.toLowerCase().includes(g.toLowerCase().split('/')[0])) {
-              genreMap.get(a.collectionId).add(g)
-            }
+          const pg = a.primaryGenreName.toLowerCase()
+          if (ITUNES_GENRE_MAP[pg]) genreMap.get(a.collectionId).add(ITUNES_GENRE_MAP[pg])
+          for (const [key, val] of Object.entries(ITUNES_GENRE_MAP)) {
+            if (pg.includes(key) || key.includes(pg)) genreMap.get(a.collectionId).add(val)
           }
         }
       }
 
-      const sorted  = flat.sort((a, b) => new Date(b.releaseDate) - new Date(a.releaseDate))
+      // Sort newest first, dedupe by album ID only (allow multiple albums per artist)
+      const seen    = new Set()
       const deduped = []
+      const sorted  = flat.sort((a, b) => new Date(b.releaseDate) - new Date(a.releaseDate))
+
       for (const a of sorted) {
         if (seen.has(a.collectionId)) continue
-        if (seenArtists.has(a.artistName)) continue
         seen.add(a.collectionId)
-        seenArtists.add(a.artistName)
         deduped.push({ ...a, _genres: genreMap.get(a.collectionId) || new Set() })
-        if (deduped.length >= 120) break
       }
+
       setAlbums(deduped)
     } catch (e) { console.error(e) }
     setLoading(false)
@@ -156,6 +178,7 @@ export default function ReleasesPage() {
 
   return (
     <div>
+      {/* ── PROMOTED STRIP ── */}
       {promoted.length > 0 && (
         <div style={{ background: 'linear-gradient(135deg, #fff0f5 0%, #ffe0ec 60%, #fff0f5 100%)', borderBottom: '1px solid rgba(255,0,102,0.13)', padding: '14px 0', overflow: 'hidden', position: 'relative' }}>
           <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 2, display: 'flex', alignItems: 'center', paddingLeft: 16, paddingRight: 52, background: 'linear-gradient(to right, #ffe0ec 55%, transparent)', pointerEvents: 'none' }}>
@@ -164,7 +187,8 @@ export default function ReleasesPage() {
           <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: 2, width: 60, background: 'linear-gradient(to left, #fff0f5, transparent)', pointerEvents: 'none' }} />
           <div style={{ display: 'flex', gap: 16, paddingLeft: 90, animation: 'marqueeScroll 65s linear infinite', width: 'max-content' }}>
             {marqueeItems.map((p, i) => (
-              <a key={i} href={p.link} target='_blank' rel='noopener noreferrer' style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px 8px 8px', borderRadius: 10, border: '1px solid rgba(255,0,102,0.18)', background: 'rgba(255,255,255,0.78)', textDecoration: 'none', flexShrink: 0, transition: 'background 0.15s' }}
+              <a key={i} href={p.link} target='_blank' rel='noopener noreferrer'
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px 8px 8px', borderRadius: 10, border: '1px solid rgba(255,0,102,0.18)', background: 'rgba(255,255,255,0.78)', textDecoration: 'none', flexShrink: 0, transition: 'background 0.15s' }}
                 onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.97)' }}
                 onMouseOut={e =>  { e.currentTarget.style.background = 'rgba(255,255,255,0.78)' }}
               >
@@ -180,22 +204,70 @@ export default function ReleasesPage() {
         </div>
       )}
 
+      {/* ── MAIN ── */}
       <div style={{ maxWidth: 960, margin: '0 auto', padding: '28px 16px 100px' }}>
         <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 4 }}>New Releases</h1>
         <p style={{ fontSize: 14, color: 'var(--gray-text)', marginBottom: 20 }}>Fresh albums waiting for their Banger Ratio</p>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'nowrap', overflowX: 'auto', marginBottom: 24, paddingBottom: 4, WebkitOverflowScrolling: 'touch', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
-          {GENRES.map(genre => (
-            <button key={genre} onClick={() => setActiveGenre(genre)} style={{ padding: '7px 16px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', fontFamily: 'inherit', flexShrink: 0, background: activeGenre === genre ? 'var(--pink)' : 'var(--gray-100)', color: activeGenre === genre ? 'white' : 'var(--gray-600)', transition: 'all 0.15s' }}>{genre}</button>
-          ))}
+        {/* Genre dropdown */}
+        <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <select
+            value={activeGenre}
+            onChange={e => setActiveGenre(e.target.value)}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 10,
+              border: '1.5px solid var(--gray-200)',
+              background: 'white',
+              color: '#1a1a1a',
+              fontSize: 14,
+              fontWeight: 600,
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+              appearance: 'none',
+              WebkitAppearance: 'none',
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 12px center',
+              paddingRight: 36,
+              minWidth: 180,
+              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+            }}
+          >
+            {GENRES.map(g => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
+          {activeGenre !== 'All' && (
+            <button
+              onClick={() => setActiveGenre('All')}
+              style={{
+                padding: '10px 14px', borderRadius: 10, border: 'none',
+                background: 'var(--gray-100)', color: 'var(--gray-600)',
+                fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              Clear
+            </button>
+          )}
         </div>
 
+        {/* Loading skeletons */}
         {loading && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 12 }}>
-            {Array.from({ length: 12 }).map((_, i) => (<div key={i} style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)' }}><div style={{ aspectRatio: '1', background: 'linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%)', backgroundSize: '400px 100%', animation: 'shimmer 1.4s ease infinite' }} /><div style={{ padding: 10 }}><div style={{ height: 11, borderRadius: 4, background: '#f0f0f0', width: '80%', marginBottom: 6 }} /><div style={{ height: 9, borderRadius: 4, background: '#f0f0f0', width: '55%' }} /></div></div>))}
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                <div style={{ aspectRatio: '1', background: 'linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%)', backgroundSize: '400px 100%', animation: 'shimmer 1.4s ease infinite' }} />
+                <div style={{ padding: 10 }}>
+                  <div style={{ height: 11, borderRadius: 4, background: '#f0f0f0', width: '80%', marginBottom: 6 }} />
+                  <div style={{ height: 9, borderRadius: 4, background: '#f0f0f0', width: '55%' }} />
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
+        {/* Album grid */}
         {!loading && (
           <>
             {filtered.length === 0 ? (
@@ -205,21 +277,25 @@ export default function ReleasesPage() {
                 <p style={{ fontSize: 13 }}>Try a different filter, or check back soon.</p>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 12 }}>
-                {filtered.map(a => (
-                  <a key={a.collectionId} href={`/album/${a.collectionId}`} style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)', background: 'white', display: 'block', transition: 'all 0.15s', textDecoration: 'none' }}
-                    onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.09)' }}
-                    onMouseOut={e =>  { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '' }}
-                  >
-                    <img src={a.artworkUrl100?.replace('100x100', '300x300')} alt='' style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
-                    <div style={{ padding: '8px 10px 10px' }}>
-                      <p style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2, color: '#1a1a1a' }}>{a.collectionName}</p>
-                      <p style={{ fontSize: 11, color: 'var(--gray-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>{a.artistName}</p>
-                      <p style={{ fontSize: 10, color: 'var(--gray-text)' }}>{new Date(a.releaseDate).toLocaleDateString()}</p>
-                    </div>
-                  </a>
-                ))}
-              </div>
+              <>
+                <p style={{ fontSize: 12, color: 'var(--gray-text)', marginBottom: 16 }}>{filtered.length} albums</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 12 }}>
+                  {filtered.map(a => (
+                    <a key={a.collectionId} href={`/album/${a.collectionId}`}
+                      style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)', background: 'white', display: 'block', transition: 'all 0.15s', textDecoration: 'none' }}
+                      onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.09)' }}
+                      onMouseOut={e =>  { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '' }}
+                    >
+                      <img src={a.artworkUrl100?.replace('100x100', '300x300')} alt='' style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
+                      <div style={{ padding: '8px 10px 10px' }}>
+                        <p style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2, color: '#1a1a1a' }}>{a.collectionName}</p>
+                        <p style={{ fontSize: 11, color: 'var(--gray-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>{a.artistName}</p>
+                        <p style={{ fontSize: 10, color: 'var(--gray-text)' }}>{new Date(a.releaseDate).toLocaleDateString()}</p>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </>
             )}
           </>
         )}
