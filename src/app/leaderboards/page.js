@@ -15,6 +15,7 @@ const BADGES = {
   filler:      { label: '⚠️ Filler Heavy',          min: 20 },
   skip:        { label: '❌ Skip It',               min: 0  },
 }
+
 function getBadge(ratio) {
   if (ratio >= 95) return BADGES.untouchable
   if (ratio >= 80) return BADGES.banger
@@ -23,6 +24,35 @@ function getBadge(ratio) {
   if (ratio >= 35) return BADGES.mixed
   if (ratio >= 20) return BADGES.filler
   return BADGES.skip
+}
+
+// Strips "Deluxe Edition", "40th Anniversary", "(Remastered)" etc.
+// so duplicate album editions count as one entry.
+function normalizeTitle(title) {
+  return title
+    .toLowerCase()
+    .replace(/\s*[\(\[].*(deluxe|edition|anniversary|remastered|version|reissue|expanded|bonus).*[\)\]]/gi, '')
+    .replace(/[^a-z0-9 ]/g, '')
+    .trim()
+}
+
+// Keep only one entry per artist+album. If duplicates, keep the one with more ratings.
+function deduplicateAlbums(albums) {
+  const seen   = new Map()
+  const result = []
+  for (const album of albums) {
+    const key = `${album.artist_name?.toLowerCase()}__${normalizeTitle(album.name || '')}`
+    if (seen.has(key)) {
+      const existingIdx = seen.get(key)
+      if ((album.total_ratings || 0) > (result[existingIdx].total_ratings || 0)) {
+        result[existingIdx] = album
+      }
+    } else {
+      seen.set(key, result.length)
+      result.push(album)
+    }
+  }
+  return result
 }
 
 function BattleSection() {
@@ -43,7 +73,6 @@ function BattleSection() {
       .select('*')
       .order('week_of', { ascending: false })
       .limit(8)
-
     if (battleData) {
       setBattles(battleData)
       const counts = {}
@@ -76,11 +105,25 @@ function BattleSection() {
     }
   }
 
-  if (loading) return <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--gray-text)' }}>Loading battles...</div>
+  if (loading) return (
+    <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--gray-text)' }}>
+      Loading battles...
+    </div>
+  )
+
+  if (battles.length === 0) return (
+    <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--gray-text)' }}>
+      <div style={{ fontSize: 36, marginBottom: 12 }}>⚔️</div>
+      <p style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', marginBottom: 6 }}>
+        No battles yet
+      </p>
+      <p style={{ fontSize: 13 }}>Check back Monday — new matchup every week.</p>
+    </div>
+  )
 
   return (
-    <div style={{ maxWidth: 700, margin: '0 auto' }}>
-      <p style={{ textAlign: 'center', color: 'var(--gray-text)', fontSize: 14, marginBottom: 32 }}>
+    <div style={{ maxWidth: 680, margin: '0 auto' }}>
+      <p style={{ textAlign: 'center', color: 'var(--gray-text)', fontSize: 14, marginBottom: 28 }}>
         Vote on the matchup. No algorithms. Pure opinion.
       </p>
       {battles.map(battle => {
@@ -90,12 +133,11 @@ function BattleSection() {
         const pctB     = total > 0 ? Math.round((v.b / total) * 100) : 50
         const voted    = myVotes[battle.id]
         const isActive = battle.is_active
-
         return (
           <div key={battle.id} style={{
             background: 'white', borderRadius: 16,
             border: `1px solid ${isActive ? 'var(--pink)' : 'var(--gray-200)'}`,
-            padding: 24, marginBottom: 20, opacity: isActive ? 1 : 0.7,
+            padding: '20px 16px', marginBottom: 16, opacity: isActive ? 1 : 0.7,
           }}>
             {isActive && (
               <div style={{
@@ -105,37 +147,35 @@ function BattleSection() {
               }}>LIVE THIS WEEK</div>
             )}
             {battle.context && (
-              <p style={{ fontSize: 13, color: 'var(--gray-text)', marginBottom: 20, fontStyle: 'italic' }}>
+              <p style={{ fontSize: 13, color: 'var(--gray-text)', marginBottom: 16, fontStyle: 'italic' }}>
                 "{battle.context}"
               </p>
             )}
-            <div style={{ display: 'flex', gap: 12, alignItems: 'stretch', marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', marginBottom: 14 }}>
               {[
                 { side: 'a', name: battle.album_a_name, artist: battle.album_a_artist, artwork: battle.album_a_art },
                 { side: 'b', name: battle.album_b_name, artist: battle.album_b_artist, artwork: battle.album_b_art },
               ].map(({ side, name, artist, artwork }) => (
-                <button
-                  key={side}
+                <button key={side}
                   onClick={() => isActive && castVote(battle.id, side)}
                   disabled={!isActive || !!voted}
                   style={{
-                    flex: 1, padding: 16, borderRadius: 12, textAlign: 'center',
+                    flex: 1, padding: '14px 10px', borderRadius: 12, textAlign: 'center',
                     border: voted === side ? '2px solid var(--pink)' : '1px solid var(--gray-200)',
                     background: voted === side ? 'rgba(255,0,102,0.05)' : 'white',
                     cursor: isActive && !voted ? 'pointer' : 'default',
-                    transition: 'all 0.15s',
+                    transition: 'all 0.15s', fontFamily: 'inherit',
                   }}
                 >
                   {artwork && (
                     <img src={artwork} alt={name}
-                      style={{ width: 64, height: 64, borderRadius: 8, marginBottom: 8, objectFit: 'cover' }} />
+                      style={{ width: 60, height: 60, borderRadius: 8, marginBottom: 8, objectFit: 'cover' }} />
                   )}
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{name}</div>
                   <div style={{ fontSize: 12, color: 'var(--gray-text)' }}>{artist}</div>
                 </button>
               ))}
             </div>
-
             {(voted || !isActive) && total > 0 && (
               <div>
                 <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', height: 28, marginBottom: 8 }}>
@@ -163,13 +203,12 @@ function BattleSection() {
           </div>
         )
       })}
-
       <div style={{
-        textAlign: 'center', padding: 24, background: 'var(--gray-100)',
+        textAlign: 'center', padding: '20px 16px', background: 'var(--gray-100)',
         borderRadius: 12, marginTop: 8,
       }}>
         <p style={{ fontSize: 13, color: 'var(--gray-text)' }}>
-          New matchup every Monday. Follow us on Instagram to vote early.
+          New matchup every Monday.
         </p>
       </div>
     </div>
@@ -192,7 +231,9 @@ export default function LeaderboardsPage() {
       .select('*')
       .gt('total_ratings', 0)
       .order('banger_ratio', { ascending: false })
-    setAlbums(data || [])
+    // Deduplicate — removes special edition / anniversary duplicates
+    const deduped = deduplicateAlbums(data || [])
+    setAlbums(deduped)
     setLoading(false)
   }
 
@@ -204,26 +245,31 @@ export default function LeaderboardsPage() {
     ? byGenre
     : byGenre.filter(a => getBadge(a.banger_ratio).label.toLowerCase().includes(filter))
 
-  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: 'var(--gray-text)' }}>Loading...</div>
+  if (loading) return (
+    <div style={{ padding: 60, textAlign: 'center', color: 'var(--gray-text)' }}>Loading...</div>
+  )
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px 80px' }}>
-      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 6 }}>🏆 Leaderboard</h1>
-      <p style={{ color: 'var(--gray-text)', fontSize: 14, marginBottom: 24 }}>
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px 100px' }}>
+
+      {/* Page header */}
+      <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 4 }}>🏆 Leaderboard</h1>
+      <p style={{ color: 'var(--gray-text)', fontSize: 14, marginBottom: 20 }}>
         Albums ranked by Banger Ratio. Click an artist to see more.
       </p>
 
-      {/* Top-level tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid var(--border)' }}>
         {[
-          { key: 'rankings',  label: 'Rankings' },
-          { key: 'battles',   label: '⚔️ Head-to-Head' },
+          { key: 'rankings', label: 'Rankings' },
+          { key: 'battles',  label: '⚔️ Head-to-Head' },
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             padding: '8px 18px', borderRadius: '8px 8px 0 0', border: 'none',
             background: tab === t.key ? 'var(--pink)' : 'transparent',
             color: tab === t.key ? 'white' : 'var(--gray-text)',
             fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+            transition: 'all 0.15s',
           }}>{t.label}</button>
         ))}
       </div>
@@ -232,70 +278,125 @@ export default function LeaderboardsPage() {
 
       {tab === 'rankings' && (
         <>
-          {/* Badge filter pills */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-            {['all', 'banger', 'gold', 'hits', 'mixed', 'skip'].map(f => (
-              <button key={f} onClick={() => setFilter(f)} style={{
-                padding: '6px 14px', borderRadius: 20, border: '1px solid var(--border)',
-                background: filter === f ? 'var(--pink)' : 'white',
-                color: filter === f ? 'white' : 'var(--gray-text)',
+          {/* Badge filter pills — horizontal scroll on mobile */}
+          <div style={{
+            display: 'flex', gap: 6, flexWrap: 'nowrap',
+            overflowX: 'auto', paddingBottom: 4,
+            WebkitOverflowScrolling: 'touch',
+            msOverflowStyle: 'none', scrollbarWidth: 'none',
+            marginBottom: 10,
+          }}>
+            {[
+              { key: 'all',    label: 'All Tiers' },
+              { key: 'banger', label: '🔥 Banger+' },
+              { key: 'gold',   label: '🥇 Gold+' },
+              { key: 'hits',   label: '🎵 Hits+' },
+              { key: 'mixed',  label: '🎲 Mixed' },
+              { key: 'skip',   label: '❌ Skip' },
+            ].map(f => (
+              <button key={f.key} onClick={() => setFilter(f.key)} style={{
+                padding: '6px 14px', borderRadius: 20, border: 'none',
+                background: filter === f.key ? 'var(--pink)' : 'var(--gray-100)',
+                color: filter === f.key ? 'white' : 'var(--gray-600)',
                 fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-                textTransform: 'capitalize',
-              }}>{f === 'all' ? 'All' : f}</button>
+                flexShrink: 0,
+                transition: 'all 0.15s',
+              }}>{f.label}</button>
             ))}
           </div>
 
-          {/* Genre filter pills */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 24 }}>
+          {/* Genre pills — horizontal scroll on mobile */}
+          <div style={{
+            display: 'flex', gap: 6, flexWrap: 'nowrap',
+            overflowX: 'auto', paddingBottom: 4,
+            WebkitOverflowScrolling: 'touch',
+            msOverflowStyle: 'none', scrollbarWidth: 'none',
+            marginBottom: 20,
+          }}>
             {GENRES.map(g => (
               <button key={g} onClick={() => setActiveGenre(g)} style={{
-                padding: '5px 14px', borderRadius: 20, fontSize: 12,
+                padding: '5px 14px', borderRadius: 20,
                 border: activeGenre === g ? 'none' : '1px solid var(--gray-200)',
-                background: activeGenre === g ? 'var(--pink)' : 'white',
+                background: activeGenre === g ? '#1a1a1a' : 'white',
                 color: activeGenre === g ? 'white' : 'var(--gray-600)',
-                fontWeight: activeGenre === g ? 700 : 400,
-                cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+                fontWeight: activeGenre === g ? 700 : 400, fontSize: 12,
+                cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+                transition: 'all 0.15s',
               }}>{g}</button>
             ))}
           </div>
 
+          {/* Empty state */}
+          {displayedAlbums.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--gray-text)' }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>🏆</div>
+              <p style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', marginBottom: 6 }}>
+                No albums match this filter
+              </p>
+              <p style={{ fontSize: 13 }}>Try a different tier or genre.</p>
+            </div>
+          )}
+
           {/* Album list */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {displayedAlbums.map((a, i) => {
               const badge = getBadge(a.banger_ratio || 0)
               return (
                 <div key={a.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 14,
+                  display: 'flex', alignItems: 'center', gap: 12,
                   background: 'white', borderRadius: 14, border: '1px solid var(--border)',
-                  padding: '12px 16px',
-                }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-text)', width: 24, textAlign: 'right', flexShrink: 0 }}>
+                  padding: '10px 14px', transition: 'box-shadow 0.15s',
+                }}
+                  onMouseOver={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.07)' }}
+                  onMouseOut={e =>  { e.currentTarget.style.boxShadow = '' }}
+                >
+                  {/* Rank — top 3 in pink */}
+                  <span style={{
+                    fontSize: 12, fontWeight: 700,
+                    color: i < 3 ? 'var(--pink)' : 'var(--gray-text)',
+                    width: 22, textAlign: 'right', flexShrink: 0,
+                  }}>
                     {i + 1}
                   </span>
+                  {/* Artwork */}
                   <img
-                    src={a.artwork_url?.replace('600x600', '80x80')}
+                    src={a.artwork_url?.replace('600x600', '80x80') || a.artwork_url}
                     alt={a.name}
-                    style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }}
+                    style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }}
                   />
+                  {/* Title + artist */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <a href={`/album/${a.itunes_collection_id}`} style={{ fontWeight: 700, fontSize: 14, color: 'var(--black)', textDecoration: 'none' }}>
+                    <a href={`/album/${a.itunes_collection_id}`}
+                      style={{ fontWeight: 700, fontSize: 14, color: 'var(--black)',
+                        textDecoration: 'none', display: 'block',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
                       {a.name}
                     </a>
-                    <p style={{ fontSize: 12, marginTop: 2 }}>
-                      <span
-                        onClick={e => { e.preventDefault(); setSelectedArtist(a.artist_name) }}
-                        style={{ cursor: 'pointer', color: 'var(--gray-text)', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+                    <p style={{ fontSize: 12, marginTop: 2, overflow: 'hidden',
+                      textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span onClick={e => { e.preventDefault(); setSelectedArtist(a.artist_name) }}
+                        style={{ cursor: 'pointer', color: 'var(--gray-text)',
+                          textDecoration: 'underline', textDecorationStyle: 'dotted' }}
                       >
                         {a.artist_name}
                       </span>
-                      <span style={{ color: 'var(--gray-text)', marginLeft: 6 }}>· {a.total_ratings} ratings</span>
+                      <span style={{ color: 'var(--gray-text)', marginLeft: 6 }}>
+                        · {a.total_ratings} rating{a.total_ratings !== 1 ? 's' : ''}
+                      </span>
                     </p>
                   </div>
+                  {/* Score + badge */}
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <p style={{ fontSize: 22, fontWeight: 800, color: 'var(--pink)', marginBottom: 2 }}>
-                      {Math.max(5, a.banger_ratio || 0)}%
+                    <p style={{ fontSize: 20, fontWeight: 800, color: 'var(--pink)',
+                      marginBottom: 2, lineHeight: 1 }}>
+                      {Math.round(a.banger_ratio || 0)}%
                     </p>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--pink)', background: 'rgba(255,0,102,0.08)', padding: '2px 8px', borderRadius: 6 }}>
+                    <span style={{
+                      fontSize: 10, fontWeight: 600, color: 'var(--pink)',
+                      background: 'rgba(255,0,102,0.08)',
+                      padding: '2px 7px', borderRadius: 6, whiteSpace: 'nowrap',
+                    }}>
                       {badge.label}
                     </span>
                   </div>
@@ -311,6 +412,10 @@ export default function LeaderboardsPage() {
           />
         </>
       )}
+
+      <style>{`
+        div::-webkit-scrollbar { display: none; }
+      `}</style>
     </div>
   )
 }
