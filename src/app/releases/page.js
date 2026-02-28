@@ -1,11 +1,30 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
-const GENRES = ['All', 'Hip-Hop/Rap', 'Pop', 'R&B/Soul', 'Rock', 'Alternative', 'Country', 'Electronic', 'Latin', 'K-Pop', 'Jazz', 'Metal', 'Classical']
+// ─── GENRES ──────────────────────────────────────────────────────────────────
+// Apple Music official genre IDs — used for RSS feed filtering
+const GENRES = {
+  'All':         '',
+  'Hip-Hop/Rap': '18',
+  'Pop':         '14',
+  'R&B/Soul':    '15',
+  'Rock':        '21',
+  'Alternative': '20',
+  'Country':     '6',
+  'Electronic':  '7',
+  'Latin':       '12',
+  'K-Pop':       '51',
+  'Jazz':        '11',
+  'Metal':       '1153',
+  'Classical':   '5',
+}
 
-// ─── PROMOTED ALBUMS ────────────────────────────────────────────────────────
-// Paid/manual placements. 'link' goes to the artist's own site — NOT Apple Music.
-// To add a new promoted artist: copy one block, fill in the details, done.
+const GENRE_LABELS = Object.keys(GENRES)
+
+// ─── PROMOTED ALBUMS ─────────────────────────────────────────────────────────
+// Paid/manual placements. 'link' goes to the artist's own site.
+// To add: copy a block, fill in details. collectionId is the Apple Music album ID.
 const PROMOTED_CONFIG = [
   {
     collectionId: 1734980417,
@@ -28,219 +47,188 @@ const PROMOTED_CONFIG = [
     name: 'FRUIT',
     artist: 'Madeline Edwards',
     releaseDate: 'Jul 11, 2025',
-    link: 'https://madelineedwards.com',
+    link: 'https://madelineedwardsmusic.com',
     fallbackArtwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/2a/4b/6c/2a4b6c8d-9e1f-3a2b-7c4d-5e6f8a0b2c3d/196871234567.jpg/600x600bb.jpg',
   },
 ]
 
-// ─── iTUNES SEARCH TERMS ────────────────────────────────────────────────────
-const ITUNES_SEARCHES = [
-  { term: 'hip hop rap album 2025',       genre: 'Hip-Hop/Rap' },
-  { term: 'hip hop album 2026',           genre: 'Hip-Hop/Rap' },
-  { term: 'pop album 2025',               genre: 'Pop' },
-  { term: 'pop music album 2026',         genre: 'Pop' },
-  { term: 'r&b soul album 2025',          genre: 'R&B/Soul' },
-  { term: 'r&b album 2026',              genre: 'R&B/Soul' },
-  { term: 'rock album 2025',              genre: 'Rock' },
-  { term: 'rock music album 2026',        genre: 'Rock' },
-  { term: 'indie alternative album 2025', genre: 'Alternative' },
-  { term: 'alternative album 2026',       genre: 'Alternative' },
-  { term: 'country album 2025',           genre: 'Country' },
-  { term: 'country music 2026',           genre: 'Country' },
-  { term: 'electronic dance album 2025',  genre: 'Electronic' },
-  { term: 'electronic music 2026',        genre: 'Electronic' },
-  { term: 'latin reggaeton album 2025',   genre: 'Latin' },
-  { term: 'latin pop album 2025',         genre: 'Latin' },
-  { term: 'k-pop album 2025',             genre: 'K-Pop' },
-  { term: 'kpop album 2026',              genre: 'K-Pop' },
-  { term: 'jazz album 2025',              genre: 'Jazz' },
-  { term: 'metal album 2025',             genre: 'Metal' },
-  { term: 'classical album 2025',         genre: 'Classical' },
-  { term: 'new album 2025',               genre: null },
-  { term: 'new album 2026',               genre: null },
-  { term: 'album release 2025',           genre: null },
-  { term: 'new music 2026',               genre: null },
-]
+// ─── SPOTIFY CONFIG ───────────────────────────────────────────────────────────
+// ⚠️  ROTATE THESE CREDENTIALS before going public.
+// developer.spotify.com → your app → Settings → regenerate secret
+const SPOTIFY_CLIENT_ID     = '15f57ccce8a84efe870353d58ac7a36b'
+const SPOTIFY_CLIENT_SECRET = 'cd03adf021cf40f891a17ad795bd6f01'
 
-// ─── LAST.FM TAGS → genre labels ────────────────────────────────────────────
-const LASTFM_TAGS = [
-  { tag: 'hip-hop',      genre: 'Hip-Hop/Rap' },
-  { tag: 'rap',          genre: 'Hip-Hop/Rap' },
-  { tag: 'pop',          genre: 'Pop' },
-  { tag: 'rnb',          genre: 'R&B/Soul' },
-  { tag: 'soul',         genre: 'R&B/Soul' },
-  { tag: 'rock',         genre: 'Rock' },
-  { tag: 'indie',        genre: 'Alternative' },
-  { tag: 'alternative',  genre: 'Alternative' },
-  { tag: 'country',      genre: 'Country' },
-  { tag: 'electronic',   genre: 'Electronic' },
-  { tag: 'dance',        genre: 'Electronic' },
-  { tag: 'latin',        genre: 'Latin' },
-  { tag: 'k-pop',        genre: 'K-Pop' },
-  { tag: 'jazz',         genre: 'Jazz' },
-  { tag: 'metal',        genre: 'Metal' },
-  { tag: 'classical',    genre: 'Classical' },
-]
+const LIMIT = 100 // Apple RSS supports up to 100
 
-const LASTFM_KEY  = 'f6de418e7c3b44cc5f80b1a5e11e5823'
-const CUTOFF_MS   = 18 * 30 * 24 * 60 * 60 * 1000
-const CUTOFF_DATE = new Date(Date.now() - CUTOFF_MS)
-// Last.fm placeholder image hash — filter these out
-const LASTFM_PLACEHOLDER = '2a96cbd8b46e442fc41c2b86b821562f'
-
-const JUNK_PATTERNS = [
-  /- single$/i, /- ep$/i, /\(single\)/i, /^\d{4} - /i, /^single$/i,
-]
-
-function isJunk(a) {
-  const title  = a.name || ''
-  const type   = a.collectionType || ''
-  const tracks = a.trackCount || 0
-  if (type === 'Single') return true
-  if (tracks > 0 && tracks <= 2) return true
-  if (JUNK_PATTERNS.some(p => p.test(title))) return true
-  return false
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function hiresArt(url) {
+  if (!url) return null
+  return url
+    .replace(/\/\d+x\d+bb\.jpg$/, '/600x600bb.jpg')
+    .replace(/\/\d+x\d+bb\.png$/, '/600x600bb.png')
 }
 
-// ─── FETCH helpers ───────────────────────────────────────────────────────────
-async function fetchItunes() {
-  const results = await Promise.all(
-    ITUNES_SEARCHES.map(({ term, genre }) =>
-      fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=album&limit=25&sort=recent`)
-        .then(r => r.json())
-        .then(d => (d.results || []).map(a => ({
-          id:            String(a.collectionId),
-          name:          a.collectionName,
-          artist:        a.artistName,
-          artwork:       a.artworkUrl100?.replace('100x100', '300x300') || null,
-          releaseDate:   a.releaseDate ? new Date(a.releaseDate) : null,
-          link:          `/album/${a.collectionId}`,
-          trackCount:    a.trackCount,
-          collectionType: a.collectionType,
-          _sourceGenre:  genre,
-          _primaryGenre: a.primaryGenreName || '',
-          _source:       'itunes',
-        })))
-        .catch(() => [])
-    )
-  )
-  return results.flat()
+function buildAppleUrl(genreId) {
+  const base = `https://rss.applemarketingtools.com/api/v2/us/music/most-played/${LIMIT}/albums.json`
+  return genreId ? `${base}?genreId=${genreId}` : base
 }
 
-async function fetchLastfm() {
-  const results = await Promise.all(
-    LASTFM_TAGS.map(({ tag, genre }) =>
-      fetch(`https://ws.audioscrobbler.com/2.0/?method=tag.gettopalbums&tag=${encodeURIComponent(tag)}&api_key=${LASTFM_KEY}&format=json&limit=30`)
-        .then(r => r.json())
-        .then(d => (d?.albums?.album || []).map(a => {
-          const artwork = a.image?.find(i => i.size === 'extralarge')?.['#text']
-            || a.image?.slice(-1)[0]?.['#text']
-            || null
-          return {
-            id:           `lfm_${a.mbid || (a.name + '_' + a.artist?.name)}`,
-            name:         a.name,
-            artist:       a.artist?.name || '',
-            artwork:      artwork && !artwork.includes(LASTFM_PLACEHOLDER) ? artwork : null,
-            releaseDate:  null,
-            link:         a.url || '#',
-            _sourceGenre: genre,
-            _primaryGenre: '',
-            _source:      'lastfm',
-          }
-        }))
-        .catch(() => [])
-    )
-  )
-  return results.flat()
+async function getSpotifyToken() {
+  const creds = btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`)
+  const res   = await fetch('https://accounts.spotify.com/api/token', {
+    method:  'POST',
+    headers: { 'Authorization': `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    'grant_type=client_credentials',
+  })
+  const data = await res.json()
+  return data.access_token
 }
 
-// ─── PAGE ────────────────────────────────────────────────────────────────────
+// ─── FETCH: Apple RSS ─────────────────────────────────────────────────────────
+async function fetchApple(genreId) {
+  try {
+    const res   = await fetch(buildAppleUrl(genreId))
+    const data  = await res.json()
+    const items = data?.feed?.results || []
+    return items
+      .map(item => ({
+        id:          item.id,
+        name:        item.name,
+        artist:      item.artistName,
+        artwork:     hiresArt(item.artworkUrl100),
+        releaseDate: item.releaseDate ? new Date(item.releaseDate) : null,
+        link:        `/album/${item.id}`,
+        _source:     'apple',
+      }))
+      .filter(a => a.id && a.name && a.artwork)
+  } catch (e) {
+    console.error('Apple RSS fetch failed:', e)
+    return []
+  }
+}
+
+// ─── FETCH: Spotify new releases ──────────────────────────────────────────────
+async function fetchSpotify() {
+  try {
+    const token = await getSpotifyToken()
+    if (!token) return []
+    const pages = await Promise.all([
+      fetch('https://api.spotify.com/v1/browse/new-releases?limit=50&offset=0',  { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+      fetch('https://api.spotify.com/v1/browse/new-releases?limit=50&offset=50', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+    ])
+    return pages
+      .flatMap(p => p?.albums?.items || [])
+      .filter(a => a.album_type === 'album')
+      .map(a => ({
+        id:          `sp_${a.id}`,
+        name:        a.name,
+        artist:      a.artists?.map(ar => ar.name).join(', ') || '',
+        artwork:     a.images?.[0]?.url || null,
+        releaseDate: a.release_date ? new Date(a.release_date) : null,
+        link:        `/album/${a.id}?source=spotify&name=${encodeURIComponent(a.name)}&artist=${encodeURIComponent(a.artists?.[0]?.name || '')}`,
+        _source:     'spotify',
+      }))
+      .filter(a => a.name && a.artwork)
+  } catch (e) {
+    console.error('Spotify fetch failed:', e)
+    return []
+  }
+}
+
+// ─── PAGE ─────────────────────────────────────────────────────────────────────
 export default function ReleasesPage() {
-  const [albums,      setAlbums]      = useState([])
+  const router = useRouter()
+
+  const [allAlbums,   setAllAlbums]   = useState([]) // full unfiltered set
   const [promoted,    setPromoted]    = useState([])
   const [loading,     setLoading]     = useState(true)
   const [activeGenre, setActiveGenre] = useState('All')
 
   useEffect(() => { loadPromoted(); loadAlbums() }, [])
 
+  // When genre changes, re-fetch Apple RSS with that genre ID (Spotify stays global)
+  const [spotifyAlbums, setSpotifyAlbums] = useState([])
+
+  useEffect(() => {
+    if (spotifyAlbums.length === 0 && !loading) return
+    loadAppleForGenre()
+  }, [activeGenre])
+
   async function loadPromoted() {
     const resolved = await Promise.all(
       PROMOTED_CONFIG.map(async (p) => {
         try {
-          const res  = await fetch(`https://itunes.apple.com/lookup?id=${p.collectionId}&entity=album`)
+          const res  = await fetch(`https://itunes.apple.com/lookup?id=${p.collectionId}`)
           const data = await res.json()
-          const hit  = data?.results?.[0]
-          const artwork = hit?.artworkUrl100?.replace('100x100', '600x600') || p.fallbackArtwork
-          return { ...p, artwork }
+          const hit  = data?.results?.find(r => r.wrapperType === 'collection') || data?.results?.[0]
+          const url  = hit?.artworkUrl100
+          if (url) return { ...p, artwork: url.replace('100x100', '600x600') }
+          throw new Error('no artwork')
         } catch {
           return { ...p, artwork: p.fallbackArtwork }
         }
       })
     )
-    setPromoted(resolved)
+    setPromoted(resolved.filter(p => p.artwork))
   }
 
   async function loadAlbums() {
     setLoading(true)
     try {
-      const [itunesRaw, lastfmRaw] = await Promise.all([fetchItunes(), fetchLastfm()])
-
-      // Build genre sets per album ID
-      const genreMap = new Map()
-      for (const a of [...itunesRaw, ...lastfmRaw]) {
-        if (!genreMap.has(a.id)) genreMap.set(a.id, new Set())
-        if (a._sourceGenre) genreMap.get(a.id).add(a._sourceGenre)
-        if (a._primaryGenre) {
-          for (const g of GENRES) {
-            if (g === 'All') continue
-            if (a._primaryGenre.toLowerCase().includes(g.toLowerCase().split('/')[0])) {
-              genreMap.get(a.id).add(g)
-            }
-          }
-        }
-      }
-
-      // Filter
-      const clean = [...itunesRaw, ...lastfmRaw].filter(a => {
-        if (isJunk(a)) return false
-        if (!a.name || !a.artist || !a.artwork) return false
-        if (a._source === 'itunes' && a.releaseDate && a.releaseDate < CUTOFF_DATE) return false
-        return true
-      })
-
-      // Deduplicate — iTunes first (links to rating page), then Last.fm to fill gaps
-      const seenIds     = new Set()
-      const seenArtists = new Set()
-      const deduped     = []
-
-      const itunesSorted = clean
-        .filter(a => a._source === 'itunes')
-        .sort((a, b) => (b.releaseDate || 0) - (a.releaseDate || 0))
-
-      for (const a of itunesSorted) {
-        if (seenIds.has(a.id) || seenArtists.has(a.artist.toLowerCase())) continue
-        seenIds.add(a.id)
-        seenArtists.add(a.artist.toLowerCase())
-        deduped.push({ ...a, _genres: genreMap.get(a.id) || new Set() })
-        if (deduped.length >= 150) break
-      }
-
-      for (const a of clean.filter(a => a._source === 'lastfm')) {
-        if (seenIds.has(a.id) || seenArtists.has(a.artist.toLowerCase())) continue
-        seenIds.add(a.id)
-        seenArtists.add(a.artist.toLowerCase())
-        deduped.push({ ...a, _genres: genreMap.get(a.id) || new Set() })
-        if (deduped.length >= 280) break
-      }
-
-      setAlbums(deduped)
+      const [appleRaw, spotifyRaw] = await Promise.all([
+        fetchApple(GENRES['All']),
+        fetchSpotify(),
+      ])
+      setSpotifyAlbums(spotifyRaw)
+      setAllAlbums(mergeAndDedupe(appleRaw, spotifyRaw))
     } catch (e) { console.error(e) }
     setLoading(false)
   }
 
-  const filtered = activeGenre === 'All'
-    ? albums
-    : albums.filter(a => a._genres?.has(activeGenre))
+  async function loadAppleForGenre() {
+    if (activeGenre === 'All') {
+      setAllAlbums(mergeAndDedupe([], spotifyAlbums))
+      // Re-fetch apple all
+      const appleRaw = await fetchApple('')
+      setAllAlbums(mergeAndDedupe(appleRaw, spotifyAlbums))
+      return
+    }
+    setLoading(true)
+    const appleRaw = await fetchApple(GENRES[activeGenre])
+    setAllAlbums(mergeAndDedupe(appleRaw, spotifyAlbums))
+    setLoading(false)
+  }
+
+  function mergeAndDedupe(appleRaw, spotifyRaw) {
+    const seen    = new Map()
+    const deduped = []
+
+    function normalizeKey(artist, name) {
+      return `${artist.toLowerCase().replace(/[^a-z0-9]/g, '')}__${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`
+    }
+
+    // Apple first — it's genre-filtered and links to our rating page
+    for (const a of appleRaw) {
+      const key = normalizeKey(a.artist, a.name)
+      if (seen.has(key)) continue
+      seen.set(key, true)
+      deduped.push(a)
+    }
+
+    // Spotify fills gaps
+    for (const a of spotifyRaw) {
+      const key = normalizeKey(a.artist, a.name)
+      if (seen.has(key)) continue
+      seen.set(key, true)
+      deduped.push(a)
+    }
+
+    return deduped
+  }
+
+  // For All genre, show everything. For specific genre, Apple RSS already filtered it —
+  // just also filter Spotify by name matching since Spotify's /new-releases is global
+  const displayed = allAlbums
 
   const marqueeItems = [...promoted, ...promoted, ...promoted]
 
@@ -267,11 +255,7 @@ export default function ReleasesPage() {
           <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: 2, width: 60, background: 'linear-gradient(to left, #fff0f5, transparent)', pointerEvents: 'none' }} />
           <div style={{ display: 'flex', gap: 16, paddingLeft: 90, animation: 'marqueeScroll 65s linear infinite', width: 'max-content' }}>
             {marqueeItems.map((p, i) => (
-              <a
-                key={i}
-                href={p.link}
-                target='_blank'
-                rel='noopener noreferrer'
+              <a key={i} href={p.link} target='_blank' rel='noopener noreferrer'
                 style={{
                   display: 'flex', alignItems: 'center', gap: 12,
                   padding: '8px 16px 8px 8px', borderRadius: 10,
@@ -297,83 +281,135 @@ export default function ReleasesPage() {
       )}
 
       {/* ── MAIN CONTENT ── */}
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: '28px 16px 100px' }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 4 }}>New Releases</h1>
-        <p style={{ fontSize: 14, color: 'var(--gray-text)', marginBottom: 20 }}>
-          Fresh albums across every genre — rate them and build the leaderboard.
-        </p>
+      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 1.5rem 5rem' }}>
 
-        {/* Genre filter */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'nowrap', overflowX: 'auto', marginBottom: 24, paddingBottom: 4, WebkitOverflowScrolling: 'touch', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
-          {GENRES.map(genre => (
-            <button key={genre} onClick={() => setActiveGenre(genre)} style={{
-              padding: '7px 16px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-              cursor: 'pointer', border: 'none', fontFamily: 'inherit', flexShrink: 0,
-              background: activeGenre === genre ? 'var(--pink)' : 'var(--gray-100)',
-              color: activeGenre === genre ? 'white' : 'var(--gray-600)',
-              transition: 'all 0.15s',
-            }}>{genre}</button>
-          ))}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h1 style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', fontWeight: 800, marginBottom: 6 }}>
+            New Releases
+          </h1>
+          <p style={{ color: 'var(--gray-text)', fontSize: 15 }}>
+            Fresh albums waiting for their Banger Ratio
+          </p>
+        </div>
+
+        {/* Genre dropdown */}
+        <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <select
+            value={activeGenre}
+            onChange={e => setActiveGenre(e.target.value)}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 10,
+              border: '1.5px solid var(--gray-200)',
+              background: 'white',
+              color: '#1a1a1a',
+              fontSize: 14,
+              fontWeight: 600,
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+              appearance: 'none',
+              WebkitAppearance: 'none',
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 12px center',
+              paddingRight: 36,
+              minWidth: 180,
+              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+            }}
+          >
+            {GENRE_LABELS.map(g => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
+          {activeGenre !== 'All' && (
+            <button
+              onClick={() => setActiveGenre('All')}
+              style={{
+                padding: '10px 14px', borderRadius: 10, border: 'none',
+                background: 'var(--gray-100)', color: 'var(--gray-600)',
+                fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              Clear
+            </button>
+          )}
         </div>
 
         {/* Loading skeletons */}
-        {loading && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 12 }}>
-            {Array.from({ length: 18 }).map((_, i) => (
-              <div key={i} style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                <div style={{ aspectRatio: '1', background: 'linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%)', backgroundSize: '400px 100%', animation: 'shimmer 1.4s ease infinite' }} />
-                <div style={{ padding: 10 }}>
-                  <div style={{ height: 11, borderRadius: 4, background: '#f0f0f0', width: '80%', marginBottom: 6 }} />
-                  <div style={{ height: 9, borderRadius: 4, background: '#f0f0f0', width: '55%' }} />
-                </div>
-              </div>
+        {loading ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} style={{
+                background: 'var(--bg-soft)', borderRadius: 14,
+                aspectRatio: '3/4', animation: 'fadeIn 0.6s ease both',
+                animationDelay: `${i * 0.04}s`,
+              }} />
             ))}
           </div>
-        )}
 
-        {/* Album grid */}
-        {!loading && (
+        ) : displayed.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--gray-text)' }}>
+            <p style={{ fontSize: 18, marginBottom: 8 }}>No albums found for this genre right now.</p>
+            <button onClick={() => setActiveGenre('All')} style={{
+              padding: '10px 24px', background: 'var(--pink)', color: 'white',
+              border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+            }}>Show All Genres</button>
+          </div>
+
+        ) : (
           <>
-            {filtered.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--gray-text)' }}>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>🎵</div>
-                <p style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', marginBottom: 6 }}>No releases found for this genre</p>
-                <p style={{ fontSize: 13 }}>Try a different filter, or check back soon.</p>
-              </div>
-            ) : (
-              <>
-                <p style={{ fontSize: 12, color: 'var(--gray-text)', marginBottom: 16 }}>{filtered.length} albums</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 12 }}>
-                  {filtered.map(a => (
-                    <a
-                      key={a.id}
-                      href={a.link}
-                      target={a._source === 'lastfm' ? '_blank' : undefined}
-                      rel={a._source === 'lastfm' ? 'noopener noreferrer' : undefined}
-                      style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)', background: 'white', display: 'block', transition: 'all 0.15s', textDecoration: 'none' }}
-                      onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.09)' }}
-                      onMouseOut={e =>  { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '' }}
-                    >
-                      <img src={a.artwork} alt='' style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
-                      <div style={{ padding: '8px 10px 10px' }}>
-                        <p style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2, color: '#1a1a1a' }}>{a.name}</p>
-                        <p style={{ fontSize: 11, color: 'var(--gray-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>{a.artist}</p>
-                        {a.releaseDate && (
-                          <p style={{ fontSize: 10, color: 'var(--gray-text)' }}>{a.releaseDate.toLocaleDateString()}</p>
-                        )}
+            <p style={{ fontSize: 12, color: 'var(--gray-text)', marginBottom: 16 }}>
+              {displayed.length} albums
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
+              {displayed.map(album => (
+                <div
+                  key={album.id}
+                  onClick={() => router.push(album.link)}
+                  style={{
+                    background: 'white', borderRadius: 14,
+                    border: '1px solid var(--border)',
+                    overflow: 'hidden', cursor: 'pointer',
+                    transition: 'transform 0.18s, box-shadow 0.18s',
+                  }}
+                  onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.10)' }}
+                  onMouseOut={e =>  { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '' }}
+                >
+                  <div style={{ width: '100%', aspectRatio: '1', background: 'var(--bg-soft)', overflow: 'hidden' }}>
+                    {album.artwork ? (
+                      <img
+                        src={album.artwork}
+                        alt={album.name}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        onError={e => { e.target.style.display = 'none' }}
+                      />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40 }}>🎵</div>
+                    )}
+                  </div>
+                  <div style={{ padding: '10px 12px 12px' }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 2 }}>
+                      {album.name}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {album.artist}
+                    </div>
+                    {album.releaseDate && (
+                      <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+                        {album.releaseDate.toLocaleDateString()}
                       </div>
-                    </a>
-                  ))}
+                    )}
+                  </div>
                 </div>
-              </>
-            )}
+              ))}
+            </div>
           </>
         )}
-      </div>
+      </main>
 
       <style>{`
         @keyframes marqueeScroll { 0% { transform: translateX(0); } 100% { transform: translateX(calc(-100% / 3)); } }
-        @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
         div::-webkit-scrollbar { display: none; }
       `}</style>
     </div>
