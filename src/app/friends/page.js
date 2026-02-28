@@ -91,14 +91,18 @@ export default function FriendsPage() {
     setFollowLoading(prev => ({ ...prev, [profileId]: false }))
   }
 
-  async function unfollow(profileId) {
-    if (!user) return
-    setFollowLoading(prev => ({ ...prev, [profileId]: true }))
-    const { error } = await supabase.from('follows').delete()
-      .eq('follower_id', user.id).eq('following_id', profileId)
-    if (error) { toast('Failed to unfollow.', 'error') }
-    else { toast('Unfollowed.', 'info'); await loadFollowing(user.id) }
-    setFollowLoading(prev => ({ ...prev, [profileId]: false }))
+  async function unfollow(targetId) {
+    const { error } = await supabase
+      .from('follows')
+      .delete()
+      .eq('follower_id', user.id)
+      .eq('following_id', targetId)
+    if (error) {
+      console.error('Unfollow error:', error)
+      toast('Failed to unfollow. Try again.', 'error')
+      return
+    }
+    await loadFollowing(user.id)
   }
 
   const followingIds = new Set(following.map(p => p.id))

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from './components/ToastContext'
-import { LeaderboardRowSkeleton } from './components/Skeleton'
+import { LeaderboardRowSkeleton, AlbumGridSkeleton } from './components/Skeleton'
 
 const BADGES = {
   classic: { label: '💎 Certified Classic', min: 90 },
