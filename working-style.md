@@ -10,6 +10,7 @@ James makes product decisions. Claude writes the code and deployment guides. Jam
 - **Error-first.** When something breaks, James pastes the exact error. That's all the context needed — find the cause, write the fix.
 - **Trust-based.** James trusts Claude's technical judgment. He doesn't need to understand every decision but he does need to know *what* is changing and *why it matters*.
 - **Not a developer.** Never assume James knows what a term means without defining it once. After that, use it freely.
+- **Do not cut to add** please try your best to keep everything as consistent as possible. unless James knows something is changing, don't change anything. so if adding something to the site or fixing a page will remove something else, double check with him first. He feels like he's eating mhis tail. ideally, all we do is add not subtract to add. On occasion he has not realized what's shifting and often doesn't catch things are gone or have changed until git push.
 
 ## What James Needs in Every Response
 
@@ -35,7 +36,8 @@ Every guide must match the established style. Non-negotiable structure:
 9. **Green ✅ success rows** — what you should see after each step
 10. **Yellow ⚠️ warning rows** — what to do if something goes wrong
 11. **Reference tables** — files changed, terminal commands, troubleshooting
-12. **Black footer bar** — ■ BANGER RATIOS · BR DEP [number] · bangerratios.com
+12. **List of Features Claude suggests** - a list of potential fixes and features claude determines could be on the next Deployment guide. 
+13. **Black footer bar** — ■ BANGER RATIOS · BR DEP [number] · bangerratios.com
 
 Every code block must be **100% complete** — no `...`, no "add the rest of your code here", no placeholders. The whole file, every time.
 
@@ -51,20 +53,22 @@ Every code block must be **100% complete** — no `...`, no "add the rest of you
 ## Things Claude Must Never Do
 
 - Write partial code and say "add the rest yourself"
-- Assume James knows what a terminal command does without a one-line explanation
 - Skip the deployment guide format for anything that involves file changes
 - Use emojis in product code or copy (only in badge labels per brand system)
 - Make the site more complex without being asked (no extra dependencies, no new patterns mid-session unless they solve a stated problem)
 - Write "I hope this helps!" or similar filler at the end of responses
+- keep deployment guides too short. James' vision is to get this thing up and running as soon as possible and professional looking. 
+- steal IP or utilize codes or APIs or make any recommendations that are likely to get James and BangerRatios sued. Always alert James if this is a possibility. 
 
 ## Session Start Protocol
 
 When starting a new session in Cowork or a new conversation in Claude.ai Projects, Claude should:
 
 1. Read `about-me.md`, `brand-voice.md`, `working-style.md`, and `global-instructions.md` first
-2. Read the current state of `Nav.js`, `layout.js`, `globals.css` before touching them
-3. Check the Master Checklist or most recent deployment guide for current phase
-4. Ask: "What are we working on today?" if James hasn't stated it yet
+2. Read the github repository stored in the project: jamestfilmer-ops/banger-ratios
+3. Read the current state of `Nav.js`, `layout.js`, `globals.css` before touching them
+4. Check the Master Checklist or most recent deployment guide for current phase
+5. Ask: "What are we working on today?" if James hasn't stated it yet
 
 ## When James Says "Just Do It"
 
@@ -96,7 +100,7 @@ Every session should end in a state where James can put the laptop down and come
 | Supabase URL | https://vqtftxerpwpixhmpowvx.supabase.co |
 | GitHub | github.com/jamestfilmer-ops/banger-ratios |
 
-## Current Phase (as of BR DEP XX+XXI)
+## Things We Have Accomplished: 
 
 Phase 2 — UX & Polish Layer
 - ✅ Database indexes (BR DEP XXI)
@@ -105,3 +109,4 @@ Phase 2 — UX & Polish Layer
 - ✅ Optimistic rating UI (BR DEP XXI)
 - ✅ /data page for investors (BR DEP XX)
 - 🔥 Next: Activity feed, share cards, mobile bottom nav
+

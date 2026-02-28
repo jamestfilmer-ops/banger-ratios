@@ -5,13 +5,13 @@ import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 const tabs = [
-  { href: '/',             label: 'Home',         icon: '🏠' },
-  { href: '/leaderboards', label: 'Charts',       icon: '🏆' },
-  { href: '/releases',     label: 'New',          icon: '🎵' },
-  { href: '/friends',      label: 'Friends',      icon: '👥' },
-  { href: '/data',         label: 'Data',         icon: '📊' },
-  { href: '/merch',        label: 'Merch',        icon: '🛍️' },
-  { href: '/about',        label: 'About',        icon: 'ℹ️' },
+  { href: '/',             label: 'Home' },
+  { href: '/leaderboards', label: 'Leaderboards' },
+  { href: '/releases',     label: 'New Releases' },
+  { href: '/friends',      label: 'Friends' },
+  { href: '/taste',        label: 'Taste Match' },
+  { href: '/merch',        label: 'Merch' },
+  { href: '/about',        label: 'About' },
 ]
 
 const mobileBottomTabs = [
