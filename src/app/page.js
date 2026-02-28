@@ -29,6 +29,39 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
+const INTERVIEW = {
+  artist: 'Jon Bellion',
+  title: 'The Architecture of an Album',
+  subtitle: 'On consistency, skip buttons, and why most artists are afraid of track 7.',
+  date: 'February 2026',
+  qa: [
+    {
+      q: 'You\'ve always talked about albums as architecture. What does that mean to you practically, track by track?',
+      a: 'Every track has a job. If it doesn\'t have a job, it shouldn\'t be there. The problem with most albums right now is that artists think more equals better. More songs, more features, more everything. But a twelve-track album where every track earns its place is more impressive to me than an eighteen-track album with six filler cuts. I\'d rather have a tight building than a sprawling one with rooms nobody walks into.',
+    },
+    {
+      q: 'Banger Ratios measures exactly that — what percentage of an album\'s tracks clear a quality threshold. If you had to guess, which of your own albums rates highest?',
+      a: 'Honestly? I think The Human Condition is probably the most consistent thing I\'ve made. I went back and forth on every single track. There were songs that I loved as standalone pieces that I cut because they broke the emotional arc. That\'s the discipline that nobody sees. People hear the album and think it flowed naturally. It didn\'t. It was surgery. I probably cut thirty songs to get to those fourteen.',
+    },
+    {
+      q: 'Is there a track on that album you almost cut that you\'re glad you kept?',
+      a: 'Guillotine. I thought it was too aggressive for the middle of the record. My instinct was to move it or drop it entirely. But there\'s something about that energy right in the center of an album — it resets the listener. It reminds them they\'re not just sitting in a nice room, they\'re on a journey. I think it\'s one of the reasons the back half of the album hits the way it does. You needed that reset.',
+    },
+    {
+      q: 'The skip button has completely changed listener behavior. Does that change how you construct albums?',
+      a: 'It should terrify every artist making music right now, and I mean that as a compliment to the listener. The skip button is honest. It\'s the most democratic music criticism tool ever invented. You don\'t have to write a review. You don\'t have to explain yourself. You just skip. And if people are skipping your track three seconds in, that\'s data. That\'s real. What platforms like Banger Ratios do is take that instinct and give it a number — and a number is something you can argue about, which is where music lives anyway.',
+    },
+    {
+      q: 'What\'s your threshold for what makes a track a banger versus filler?',
+      a: 'Does it make you feel something you weren\'t expecting to feel? That\'s it. Filler is safe. Filler does what you expect. A banger surprises you even on the tenth listen. It might be two minutes long. It might be an interlude. Length, tempo, genre — none of that matters. What matters is: does it justify being on this record? And more importantly, does it justify taking up four minutes of your life? Because that\'s what you\'re really asking somebody for. Their time. Their attention. The least you can do is earn it.',
+    },
+    {
+      q: 'Last one. If you could go back and change the sequencing on any album — yours or anyone else\'s — what would it be?',
+      a: 'I\'m not touching anyone else\'s work. But I will say — and I\'ve said this publicly before — I think albums should be sequenced reverse chronologically sometimes. Start with the climax. Make the listener earn the context. We\'re so trained to build to something. What if we started at the peak and let everything else be the explanation? I don\'t know if I\'ll ever do it. But I think about it.',
+    },
+  ],
+}
+
 export default function Home() {
   const [query, setQuery]         = useState('')
   const [results, setResults]     = useState([])
@@ -43,6 +76,7 @@ export default function Home() {
   const [showCount, setShowCount]   = useState(20)
   const [activeTab, setActiveTab]   = useState('top') // 'top' | 'feed' | 'gems'
   const [searchError, setSearchError] = useState(null)
+  const [openQ, setOpenQ] = useState(null)
 
   const toast = useToast()
 
@@ -468,6 +502,92 @@ export default function Home() {
             )}
           </section>
         )}
+
+        {/* ── FEATURED ARTIST INTERVIEW ─────────────────────────── */}
+        <section style={{ marginTop: 72, borderTop: '1px solid var(--border)', paddingTop: 56 }}>
+
+          {/* Section label */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 36 }}>
+            <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
+            <span style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: 2.5,
+              color: 'var(--pink)', textTransform: 'uppercase',
+            }}>Featured Artist</span>
+            <div style={{ height: 1, flex: 1, background: 'var(--border)' }} />
+          </div>
+
+          {/* Header */}
+          <div style={{ display: 'flex', gap: 28, alignItems: 'flex-start', marginBottom: 44, flexWrap: 'wrap' }}>
+            {/* Monogram block — placeholder since we don't have a licensed photo */}
+            <div style={{
+              width: 110, height: 110, borderRadius: 6, flexShrink: 0,
+              background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 8px 28px rgba(0,0,0,0.16)',
+            }}>
+              <span style={{ fontSize: 32, fontWeight: 800, color: 'var(--pink)', fontStyle: 'italic' }}>JB</span>
+            </div>
+
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <p style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase',
+                color: 'var(--gray-text)', marginBottom: 8,
+              }}>{INTERVIEW.date}</p>
+              <h2 style={{
+                fontSize: 30, fontWeight: 800, lineHeight: 1.1,
+                color: 'var(--black)', marginBottom: 8, letterSpacing: -0.5,
+              }}>{INTERVIEW.artist}</h2>
+              <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--black)', marginBottom: 6, lineHeight: 1.4 }}>
+                {INTERVIEW.title}
+              </p>
+              <p style={{ fontSize: 14, color: 'var(--gray-text)', lineHeight: 1.55, maxWidth: 400, fontStyle: 'italic' }}>
+                {INTERVIEW.subtitle}
+              </p>
+            </div>
+          </div>
+
+          {/* Q&A accordion */}
+          <div>
+            {INTERVIEW.qa.map((item, i) => (
+              <div key={i} style={{ borderTop: '1px solid var(--border)', padding: '22px 0' }}>
+                <button
+                  onClick={() => setOpenQ(openQ === i ? null : i)}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+                    width: '100%', background: 'none', border: 'none',
+                    cursor: 'pointer', padding: 0, gap: 16, textAlign: 'left',
+                  }}
+                >
+                  <p style={{
+                    fontSize: 15, fontWeight: 700, color: 'var(--black)',
+                    lineHeight: 1.45, flex: 1, fontFamily: 'inherit', margin: 0,
+                  }}>
+                    <span style={{ color: 'var(--pink)', marginRight: 8, fontWeight: 800 }}>Q.</span>
+                    {item.q}
+                  </p>
+                  <span style={{
+                    fontSize: 22, color: 'var(--gray-text)', flexShrink: 0, marginTop: 1,
+                    display: 'inline-block', transition: 'transform 0.2s',
+                    transform: openQ === i ? 'rotate(45deg)' : 'rotate(0deg)',
+                  }}>+</span>
+                </button>
+
+                {openQ === i && (
+                  <div style={{ marginTop: 16, paddingLeft: 20, borderLeft: '2px solid var(--pink)' }}>
+                    <p style={{ fontSize: 15, lineHeight: 1.8, color: '#444', fontStyle: 'italic', margin: 0 }}>
+                      "{item.a}"
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
+            <div style={{ borderTop: '1px solid var(--border)' }} />
+          </div>
+
+          <p style={{ fontSize: 11, color: 'var(--gray-text)', marginTop: 20, fontStyle: 'italic' }}>
+            This is a fictional editorial interview created for illustrative purposes.
+          </p>
+        </section>
 
         {/* Footer */}
         <footer style={{ borderTop: '1px solid var(--border)', marginTop: 60, paddingTop: 24, textAlign: 'center' }}>
