@@ -26,8 +26,6 @@ function getBadge(ratio) {
   return BADGES.skip
 }
 
-// Strips "Deluxe Edition", "40th Anniversary", "(Remastered)" etc.
-// so duplicate album editions count as one entry.
 function normalizeTitle(title) {
   return title
     .toLowerCase()
@@ -36,7 +34,6 @@ function normalizeTitle(title) {
     .trim()
 }
 
-// Keep only one entry per artist+album. If duplicates, keep the one with more ratings.
 function deduplicateAlbums(albums) {
   const seen   = new Map()
   const result = []
@@ -231,7 +228,6 @@ export default function LeaderboardsPage() {
       .select('*')
       .gt('total_ratings', 0)
       .order('banger_ratio', { ascending: false })
-    // Deduplicate — removes special edition / anniversary duplicates
     const deduped = deduplicateAlbums(data || [])
     setAlbums(deduped)
     setLoading(false)
@@ -252,7 +248,6 @@ export default function LeaderboardsPage() {
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px 100px' }}>
 
-      {/* Page header */}
       <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 4 }}>🏆 Leaderboard</h1>
       <p style={{ color: 'var(--gray-text)', fontSize: 14, marginBottom: 20 }}>
         Albums ranked by Banger Ratio. Click an artist to see more.
@@ -278,7 +273,7 @@ export default function LeaderboardsPage() {
 
       {tab === 'rankings' && (
         <>
-          {/* Badge filter pills — horizontal scroll on mobile */}
+          {/* Badge filter pills */}
           <div style={{
             display: 'flex', gap: 6, flexWrap: 'nowrap',
             overflowX: 'auto', paddingBottom: 4,
@@ -299,13 +294,12 @@ export default function LeaderboardsPage() {
                 background: filter === f.key ? 'var(--pink)' : 'var(--gray-100)',
                 color: filter === f.key ? 'white' : 'var(--gray-600)',
                 fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-                flexShrink: 0,
-                transition: 'all 0.15s',
+                flexShrink: 0, transition: 'all 0.15s',
               }}>{f.label}</button>
             ))}
           </div>
 
-          {/* Genre pills — horizontal scroll on mobile */}
+          {/* Genre pills */}
           <div style={{
             display: 'flex', gap: 6, flexWrap: 'nowrap',
             overflowX: 'auto', paddingBottom: 4,
@@ -337,18 +331,28 @@ export default function LeaderboardsPage() {
             </div>
           )}
 
-          {/* Album list */}
+          {/* Album list — each card is now fully clickable with pink flash on tap */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {displayedAlbums.map((a, i) => {
               const badge = getBadge(a.banger_ratio || 0)
               return (
-                <div key={a.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  background: 'white', borderRadius: 14, border: '1px solid var(--border)',
-                  padding: '10px 14px', transition: 'box-shadow 0.15s',
-                }}
-                  onMouseOver={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.07)' }}
-                  onMouseOut={e =>  { e.currentTarget.style.boxShadow = '' }}
+                <a
+                  key={a.id}
+                  href={`/album/${a.itunes_collection_id}`}
+                  className="lb-card"
+                  onClick={e => {
+                    // If user clicked the artist name, open ArtistPanel instead of navigating
+                    if (e.target.dataset.artist) { e.preventDefault(); return }
+                    // Pink flash animation
+                    e.currentTarget.classList.remove('lb-card-flash')
+                    void e.currentTarget.offsetWidth
+                    e.currentTarget.classList.add('lb-card-flash')
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 14px',
+                    textDecoration: 'none', color: 'inherit',
+                  }}
                 >
                   {/* Rank — top 3 in pink */}
                   <span style={{
@@ -358,24 +362,28 @@ export default function LeaderboardsPage() {
                   }}>
                     {i + 1}
                   </span>
+
                   {/* Artwork */}
                   <img
                     src={a.artwork_url?.replace('600x600', '80x80') || a.artwork_url}
                     alt={a.name}
                     style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }}
                   />
+
                   {/* Title + artist */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <a href={`/album/${a.itunes_collection_id}`}
-                      style={{ fontWeight: 700, fontSize: 14, color: 'var(--black)',
-                        textDecoration: 'none', display: 'block',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    >
+                    <p style={{
+                      fontWeight: 700, fontSize: 14, color: 'var(--black)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      marginBottom: 2,
+                    }}>
                       {a.name}
-                    </a>
+                    </p>
                     <p style={{ fontSize: 12, marginTop: 2, overflow: 'hidden',
                       textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <span onClick={e => { e.preventDefault(); setSelectedArtist(a.artist_name) }}
+                      <span
+                        data-artist="true"
+                        onClick={e => { e.preventDefault(); setSelectedArtist(a.artist_name) }}
                         style={{ cursor: 'pointer', color: 'var(--gray-text)',
                           textDecoration: 'underline', textDecorationStyle: 'dotted' }}
                       >
@@ -386,6 +394,7 @@ export default function LeaderboardsPage() {
                       </span>
                     </p>
                   </div>
+
                   {/* Score + badge */}
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <p style={{ fontSize: 20, fontWeight: 800, color: 'var(--pink)',
@@ -400,7 +409,7 @@ export default function LeaderboardsPage() {
                       {badge.label}
                     </span>
                   </div>
-                </div>
+                </a>
               )
             })}
           </div>
@@ -415,6 +424,27 @@ export default function LeaderboardsPage() {
 
       <style>{`
         div::-webkit-scrollbar { display: none; }
+        .lb-card {
+          border-radius: 14px;
+          border: 2px solid transparent;
+          background: white;
+          transition: border-color 0.18s, box-shadow 0.18s;
+        }
+        .lb-card:hover {
+          border-color: rgba(255, 0, 127, 0.35);
+          box-shadow: 0 4px 20px rgba(255, 0, 127, 0.10);
+        }
+        .lb-card:active {
+          border-color: var(--pink);
+          box-shadow: 0 0 0 3px rgba(255, 0, 102, 0.20);
+        }
+        @keyframes pinkFlash {
+          0%   { border-color: var(--pink); box-shadow: 0 0 0 4px rgba(255,0,102,0.28); }
+          100% { border-color: transparent; box-shadow: none; }
+        }
+        .lb-card-flash {
+          animation: pinkFlash 0.45s ease-out forwards;
+        }
       `}</style>
     </div>
   )
