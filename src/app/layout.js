@@ -5,6 +5,7 @@ import Nav from './components/Nav'
 import NewsBanner from './components/NewsBanner'
 import Footer from './components/Footer'
 import { ToastProvider } from './components/ToastContext'
+import { Analytics } from '@vercel/analytics/next'   // ← ADD THIS LINE
 
 export const metadata = {
   title: 'Banger Ratios — The Real Measure of Musical Consistency',

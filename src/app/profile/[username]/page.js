@@ -1,6 +1,5 @@
 // FILE: src/app/profile/[username]/page.js
 // Cmd+A → Delete → Paste
-// Fixes: banner/avatar overlap, removes emojis, adds taste analytics
 
 'use client'
 
@@ -171,11 +170,11 @@ export default function PublicProfilePage() {
           : 'linear-gradient(135deg, #FF0066 0%, #CC0052 100%)',
       }} />
 
-      {/* ── Avatar row — sits BELOW banner with a gap ─────────── */}
+      {/* ── Avatar row — overlaps banner by 36px ──────────────── */}
       <div style={{ padding: '0 24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 16, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: -40, marginBottom: 16 }}>
 
-          {/* Avatar — NO negative margin, sits below banner cleanly */}
+          {/* Avatar — overlaps banner */}
           <div style={{
             width: 80, height: 80, borderRadius: '50%',
             border: '3px solid white',
@@ -191,7 +190,7 @@ export default function PublicProfilePage() {
           </div>
 
           {/* Action buttons */}
-          <div style={{ display: 'flex', gap: 8, paddingTop: 8 }}>
+          <div style={{ display: 'flex', gap: 8, paddingBottom: 4 }}>
             {!isOwnProfile && (
               <button onClick={toggleFollow} disabled={followLoading} style={{
                 padding: '9px 22px', borderRadius: 9, fontSize: 13, fontWeight: 600,

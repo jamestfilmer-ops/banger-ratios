@@ -42,74 +42,139 @@ export default function AlbumPage() {
   const [loading, setLoading]         = useState(true)
   const [saving, setSaving]           = useState({})
   const [notFound, setNotFound]       = useState(false)
+  const [statusMsg, setStatusMsg]     = useState('Loading...')
 
   useEffect(() => { init() }, [])
 
   async function init() {
+    const id = params.id
+    setStatusMsg('Loading album...')
+
+    // ── 1. Get the logged-in user (if any) ──────────────────────────────────
     const { data: { user: u } } = await supabase.auth.getUser()
     setUser(u)
-    const id = params.id
 
-    const { data: alb } = await supabase
+    // ── 2. Always fetch fresh data from iTunes first ─────────────────────────
+    // This guarantees we always have the right artwork, title, and tracks.
+    let itunesAlbumData = null
+    let itunesTrackData = []
+
+    try {
+      setStatusMsg('Fetching album from iTunes...')
+      const res = await fetch(
+        `https://itunes.apple.com/lookup?id=${id}&entity=song&country=us`
+      )
+      const data = await res.json()
+      const results = data.results || []
+
+      // The collection is the first result with wrapperType === 'collection'
+      itunesAlbumData = results.find(r => r.wrapperType === 'collection')
+      itunesTrackData = results.filter(r => r.wrapperType === 'track')
+    } catch (e) {
+      console.error('iTunes fetch failed:', e)
+    }
+
+    // ── 3. If iTunes returned nothing, try loading from Supabase as fallback ─
+    if (!itunesAlbumData || itunesTrackData.length === 0) {
+      setStatusMsg('Checking database...')
+      const { data: alb } = await supabase
+        .from('albums')
+        .select('*')
+        .eq('itunes_collection_id', id)
+        .single()
+
+      if (alb) {
+        setAlbum(alb)
+        const { data: tr } = await supabase
+          .from('tracks')
+          .select('*')
+          .eq('album_id', alb.id)
+          .order('track_number', { ascending: true })
+        const trackList = tr || []
+        setTracks(trackList)
+
+        if (u && trackList.length > 0) {
+          const { data: ratings } = await supabase
+            .from('ratings')
+            .select('track_id, score')
+            .eq('user_id', u.id)
+            .in('track_id', trackList.map(t => t.id))
+          const map = {}
+          ;(ratings || []).forEach(r => { map[r.track_id] = r.score })
+          setUserRatings(map)
+        }
+
+        setLoading(false)
+        return
+      }
+
+      // Nothing in iTunes OR database — truly not found
+      setNotFound(true)
+      setLoading(false)
+      return
+    }
+
+    // ── 4. Save album to Supabase (upsert = safe to run multiple times) ──────
+    setStatusMsg('Saving album...')
+    const { data: dbAlbum, error: albumErr } = await supabase
       .from('albums')
-      .select('*')
-      .eq('itunes_collection_id', id)
+      .upsert({
+        itunes_collection_id: itunesAlbumData.collectionId,
+        name:         itunesAlbumData.collectionName,
+        artist_name:  itunesAlbumData.artistName,
+        artwork_url:  itunesAlbumData.artworkUrl100?.replace('100x100bb', '600x600bb'),
+        release_date: itunesAlbumData.releaseDate?.split('T')[0],
+        genre:        itunesAlbumData.primaryGenreName,
+        track_count:  itunesTrackData.length,
+      }, { onConflict: 'itunes_collection_id' })
+      .select()
       .single()
 
-    if (alb) {
-      setAlbum(alb)
-      const { data: tr } = await supabase
-        .from('tracks')
-        .select('*')
-        .eq('album_id', alb.id)
-        .order('track_number', { ascending: true })
-      setTracks(tr || [])
-      if (u) {
-        const { data: ratings } = await supabase
-          .from('ratings')
-          .select('track_id, score')
-          .eq('user_id', u.id)
-          .in('track_id', (tr || []).map(t => t.id))
-        const map = {}
-        ;(ratings || []).forEach(r => map[r.track_id] = r.score)
-        setUserRatings(map)
-      }
-    } else {
-      try {
-        const itunesRes = await fetch(
-          `https://itunes.apple.com/lookup?id=${id}&entity=song`
-        )
-        const itunesData = await itunesRes.json()
-        if (itunesData.results && itunesData.results.length > 0) {
-          const collection = itunesData.results[0]
-          setAlbum({
-            id: id,
-            name: collection.collectionName,
-            artist_name: collection.artistName,
-            artwork_url: collection.artworkUrl100?.replace('100x100bb', '600x600bb'),
-            itunes_collection_id: id,
-            genre: collection.primaryGenreName,
-            release_date: collection.releaseDate,
-            banger_ratio: null,
-            total_ratings: 0,
-          })
-          setTracks(
-            itunesData.results
-              .filter(r => r.wrapperType === 'track')
-              .map(t => ({
-                id: t.trackId,
-                name: t.trackName,
-                track_number: t.trackNumber,
-                duration_ms: t.trackTimeMillis,
-                album_id: id,
-              }))
-          )
-        } else {
-          setNotFound(true)
-        }
-      } catch (e) {
-        setNotFound(true)
-      }
+    if (albumErr || !dbAlbum) {
+      console.error('Album upsert failed:', albumErr)
+      setNotFound(true)
+      setLoading(false)
+      return
+    }
+
+    setAlbum(dbAlbum)
+
+    // ── 5. Save all tracks to Supabase ───────────────────────────────────────
+    setStatusMsg('Saving tracks...')
+    const trackRows = itunesTrackData.map(t => ({
+      album_id:        dbAlbum.id,
+      itunes_track_id: t.trackId,
+      name:            t.trackName,
+      track_number:    t.trackNumber,
+      duration_ms:     t.trackTimeMillis,
+    }))
+
+    await supabase
+      .from('tracks')
+      .upsert(trackRows, { onConflict: 'itunes_track_id' })
+
+    // ── 6. Load the tracks back from Supabase so we have real database IDs ───
+    // This is the key step — track IDs from Supabase are what we use for ratings
+    setStatusMsg('Loading tracks...')
+    const { data: dbTracks } = await supabase
+      .from('tracks')
+      .select('*')
+      .eq('album_id', dbAlbum.id)
+      .order('track_number', { ascending: true })
+
+    const trackList = dbTracks || []
+    setTracks(trackList)
+
+    // ── 7. Load this user's existing ratings if logged in ────────────────────
+    if (u && trackList.length > 0) {
+      const { data: ratings } = await supabase
+        .from('ratings')
+        .select('track_id, score')
+        .eq('user_id', u.id)
+        .in('track_id', trackList.map(t => t.id))
+      const map = {}
+      ;(ratings || []).forEach(r => { map[r.track_id] = r.score })
+      setUserRatings(map)
     }
 
     setLoading(false)
@@ -119,8 +184,10 @@ export default function AlbumPage() {
     if (!user) { window.location.href = '/auth'; return }
     setSaving(prev => ({ ...prev, [trackId]: true }))
     await supabase.from('ratings').upsert({
-      user_id: user.id, track_id: trackId, score,
-      album_id: album.id
+      user_id:  user.id,
+      track_id: trackId,
+      score,
+      album_id: album.id,
     }, { onConflict: 'user_id,track_id' })
     setUserRatings(prev => ({ ...prev, [trackId]: score }))
     setSaving(prev => ({ ...prev, [trackId]: false }))
@@ -129,8 +196,8 @@ export default function AlbumPage() {
   async function handleShare() {
     const shareData = {
       title: `${album.name} — Banger Ratios`,
-      text: `${album.name} by ${album.artist_name} has a ${album.banger_ratio ?? '?'}% Banger Ratio on Banger Ratios`,
-      url: window.location.href,
+      text:  `${album.name} by ${album.artist_name} has a ${album.banger_ratio ?? '?'}% Banger Ratio on Banger Ratios`,
+      url:   window.location.href,
     }
     if (navigator.share) {
       try { await navigator.share(shareData) } catch (e) {}
@@ -140,8 +207,14 @@ export default function AlbumPage() {
     }
   }
 
-  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#94A3B8' }}>Loading...</div>
+  // ── Loading state ──────────────────────────────────────────────────────────
+  if (loading) return (
+    <div style={{ padding: 60, textAlign: 'center', color: '#94A3B8' }}>
+      <div style={{ fontSize: 14 }}>{statusMsg}</div>
+    </div>
+  )
 
+  // ── Not found state ────────────────────────────────────────────────────────
   if (notFound || !album) return (
     <main style={{ padding: '4rem 2rem', textAlign: 'center' }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 12 }}>Album Not Found</h1>
@@ -155,13 +228,14 @@ export default function AlbumPage() {
   const displayRatio = Math.max(5, album.banger_ratio || 0)
   const badge = getBadge(album.banger_ratio || 0)
 
+  // ── Main render ────────────────────────────────────────────────────────────
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 24px 80px' }}>
 
       {/* Album header */}
       <div style={{ display: 'flex', gap: 20, marginBottom: 32, alignItems: 'flex-start' }}>
         <img
-          src={album.artwork_url?.replace('600x600', '300x300')}
+          src={album.artwork_url?.replace('600x600bb', '300x300bb')}
           alt={album.name}
           style={{ width: 120, height: 120, borderRadius: 12, objectFit: 'cover', flexShrink: 0 }}
         />
@@ -181,7 +255,7 @@ export default function AlbumPage() {
             {album.total_ratings || 0} ratings
           </p>
 
-          {/* Share button */}
+          {/* Share button — identical to before */}
           <button
             onClick={handleShare}
             style={{
@@ -208,14 +282,15 @@ export default function AlbumPage() {
         </div>
       </div>
 
-      {/* Track list */}
+      {/* Track list — identical to before */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {tracks.map(track => {
           const userScore = userRatings[track.id]
           return (
             <div key={track.id} style={{ background: 'white', borderRadius: 12,
               border: '1px solid var(--border)', padding: '14px 16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between',
+                alignItems: 'flex-start', marginBottom: 10 }}>
                 <div>
                   <p style={{ fontWeight: 600, fontSize: 14 }}>
                     {track.track_number}. {track.name}
@@ -279,7 +354,7 @@ export default function AlbumPage() {
           padding: '10px 20px', borderRadius: 10, marginTop: 16,
           border: '1px solid var(--border)', background: 'white',
           color: 'var(--gray-text)', fontWeight: 600, fontSize: 13,
-          cursor: 'pointer', width: '100%', fontFamily: 'inherit'
+          cursor: 'pointer', width: '100%', fontFamily: 'inherit',
         }}
           onClick={() => alert('Lists feature coming soon!')}
         >

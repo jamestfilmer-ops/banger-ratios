@@ -1,35 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
 
-const GENRES = ['All', 'Hip-Hop/Rap', 'Pop', 'R&B/Soul', 'Rock', 'Alternative', 'Country', 'Electronic', 'Latin', 'K-Pop']
+const GENRES = ['All','Hip-Hop/Rap','Pop','R&B/Soul','Rock','Alternative','Country','Electronic','Latin','K-Pop']
 
-const SEARCHES = [
-  { term: 'hip hop rap album 2025',       genre: 'Hip-Hop/Rap' },
-  { term: 'hip hop album 2026',           genre: 'Hip-Hop/Rap' },
-  { term: 'pop album 2025',               genre: 'Pop' },
-  { term: 'pop music album 2026',         genre: 'Pop' },
-  { term: 'r&b soul album 2025',          genre: 'R&B/Soul' },
-  { term: 'r&b album 2026',              genre: 'R&B/Soul' },
-  { term: 'rock album 2025',              genre: 'Rock' },
-  { term: 'rock music album 2026',        genre: 'Rock' },
-  { term: 'indie alternative album 2025', genre: 'Alternative' },
-  { term: 'alternative album 2026',       genre: 'Alternative' },
-  { term: 'country album 2025',           genre: 'Country' },
-  { term: 'country music 2026',           genre: 'Country' },
-  { term: 'electronic dance album 2025',  genre: 'Electronic' },
-  { term: 'electronic music 2026',        genre: 'Electronic' },
-  { term: 'latin reggaeton album 2025',   genre: 'Latin' },
-  { term: 'latin pop album 2025',         genre: 'Latin' },
-  { term: 'k-pop album 2025',             genre: 'K-Pop' },
-  { term: 'kpop album 2026',              genre: 'K-Pop' },
-  { term: 'new album 2025',               genre: null },
-  { term: 'new album 2026',               genre: null },
-  { term: 'album release 2025',           genre: null },
-]
-
-// ─── PROMOTED ────────────────────────────────────────────────────────────────
-// 'link' goes to the artist's own site — clicking opens their website.
-// To add a new placement: copy a block, fill in the details.
 const PROMOTED_CONFIG = [
   {
     collectionId: 1734980417,
@@ -55,147 +28,183 @@ const PROMOTED_CONFIG = [
     link: 'https://madelineedwardsmusic.com',
     fallbackArtwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/2a/4b/6c/2a4b6c8d-9e1f-3a2b-7c4d-5e6f8a0b2c3d/196871234567.jpg/600x600bb.jpg',
   },
+  
+
+    {
+    collectionId: 1862634688,
+    name: 'The Way I Am',
+    artist: 'Luke Combs',
+    releaseDate: 'Mar 20, 2026',
+    link: 'https://twia.lukecombs.com',
+    fallbackArtwork: 'https://musicrow.com/wp-content/uploads/2026/02/luke_combs_cover8.jpg',
+},
+    
 ]
 
-// iTunes genre name → our filter labels
-const ITUNES_GENRE_MAP = {
-  'hip-hop/rap': 'Hip-Hop/Rap', 'hip hop': 'Hip-Hop/Rap', 'rap': 'Hip-Hop/Rap',
-  'urban contemporary': 'Hip-Hop/Rap', 'trap': 'Hip-Hop/Rap',
-  'pop': 'Pop', 'dance pop': 'Pop', 'synth-pop': 'Pop', 'k-pop': 'K-Pop',
-  'r&b/soul': 'R&B/Soul', 'r&b': 'R&B/Soul', 'soul': 'R&B/Soul',
-  'contemporary r&b': 'R&B/Soul', 'neo soul': 'R&B/Soul',
-  'rock': 'Rock', 'alternative rock': 'Rock', 'hard rock': 'Rock',
-  'indie rock': 'Alternative', 'alternative': 'Alternative', 'indie pop': 'Alternative',
-  'country': 'Country', 'country & folk': 'Country', 'americana': 'Country',
-  'electronic': 'Electronic', 'dance': 'Electronic', 'edm': 'Electronic',
-  'electronica': 'Electronic', 'house': 'Electronic', 'techno': 'Electronic',
-  'latin': 'Latin', 'reggaeton': 'Latin', 'latin pop': 'Latin',
-}
+const Select = ({ label, value, options, onChange }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <label style={{ fontSize: 11, fontWeight: 600, color: '#999', letterSpacing: 0.5 }}>{label}</label>
+    <select value={value} onChange={e => onChange(e.target.value)} style={{
+      padding: '8px 12px', borderRadius: 8, border: '1px solid #E5E5E5',
+      background: value !== 'All' ? '#FF006610' : 'white',
+      color: value !== 'All' ? '#FF0066' : '#333',
+      fontSize: 13, fontWeight: value !== 'All' ? 600 : 400,
+      cursor: 'pointer', outline: 'none', appearance: 'none',
+      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+      backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center',
+      paddingRight: 32, minWidth: 160,
+    }}>
+      {options.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
+  </div>
+)
 
-const CUTOFF_MS   = 18 * 30 * 24 * 60 * 60 * 1000
-const CUTOFF_DATE = new Date(Date.now() - CUTOFF_MS)
+function AlbumCard({ name, artist, release_date, artwork, itunesId, upcoming }) {
+  const href = itunesId ? `/album/${itunesId}` : null
+  const content = (
+    <>
+      <div style={{ position: 'relative' }}>
+        {artwork
+          ? <img src={artwork} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
+          : <div style={{ width: '100%', aspectRatio: '1', background: '#F5F5F5',
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: 32 }}>🎵</span>
+            </div>
+        }
+        {upcoming && (
+          <div style={{ position: 'absolute', top: 8, left: 8, background: '#FF0066',
+            color: 'white', fontSize: 9, fontWeight: 700, padding: '3px 7px',
+            borderRadius: 5, letterSpacing: 0.5 }}>UPCOMING</div>
+        )}
+      </div>
+      <div style={{ padding: '8px 10px 10px' }}>
+        <p style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden',
+          textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '0 0 2px', color: '#1a1a1a' }}>{name}</p>
+        <p style={{ fontSize: 11, color: '#999', margin: '0 0 3px', overflow: 'hidden',
+          textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{artist}</p>
+        <p style={{ fontSize: 10, color: '#BBB', margin: 0 }}>
+          {release_date ? new Date(release_date).toLocaleDateString() : ''}
+        </p>
+      </div>
+    </>
+  )
 
-const JUNK_PATTERNS = [
-  /- single$/i, /- ep$/i, /\(single\)/i, /^\d{4} - /i, /^single$/i,
-]
+  const sharedStyle = {
+    borderRadius: 12, overflow: 'hidden', border: '1px solid #E5E5E5',
+    background: 'white', display: 'block', transition: 'all 0.15s',
+  }
 
-function isJunk(album) {
-  const title  = album.collectionName || ''
-  const type   = album.collectionType || ''
-  const tracks = album.trackCount || 0
-  if (type === 'Single') return true
-  if (tracks > 0 && tracks <= 2) return true
-  if (JUNK_PATTERNS.some(p => p.test(title))) return true
-  return false
+  return href ? (
+    <a href={href} style={{ ...sharedStyle, textDecoration: 'none', color: 'inherit' }}
+      onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.09)' }}
+      onMouseOut={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '' }}>
+      {content}
+    </a>
+  ) : (
+    <div style={sharedStyle}>{content}</div>
+  )
 }
 
 export default function ReleasesPage() {
-  const [albums,      setAlbums]      = useState([])
-  const [promoted,    setPromoted]    = useState([])
-  const [loading,     setLoading]     = useState(true)
-  const [activeGenre, setActiveGenre] = useState('All')
+  const [tab, setTab] = useState('now')
+  const [genre, setGenre] = useState('All')
+  const [nowAlbums, setNowAlbums] = useState([])
+  const [upcomingAlbums, setUpcomingAlbums] = useState([])
+  const [promoted, setPromoted] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => { loadPromoted(); loadAlbums() }, [])
+  useEffect(() => { loadPromoted() }, [])
+  useEffect(() => {
+    if (tab === 'now') loadNow()
+    else loadUpcoming()
+  }, [tab, genre])
 
   async function loadPromoted() {
     const resolved = await Promise.all(
       PROMOTED_CONFIG.map(async (p) => {
         try {
-          // No &entity param — returns the collection record directly
-          const res  = await fetch(`https://itunes.apple.com/lookup?id=${p.collectionId}`)
+          const res = await fetch(`/api/itunes?id=${p.collectionId}`)
           const data = await res.json()
-          // Find the album record specifically (not artist or track)
-          const hit  = data?.results?.find(r => r.wrapperType === 'collection')
-                    || data?.results?.[0]
-          const url  = hit?.artworkUrl100
-          if (url) return { ...p, artwork: url.replace('100x100', '600x600') }
-          return { ...p, artwork: p.fallbackArtwork }
+          const hit = data?.results?.find(r => r.wrapperType === 'collection') || data?.results?.[0]
+          const url = hit?.artworkUrl100
+          return { ...p, artwork: url ? url.replace('100x100', '600x600') : p.fallbackArtwork }
         } catch {
           return { ...p, artwork: p.fallbackArtwork }
         }
       })
     )
-    // Always show all promoted items as long as they have some artwork
     setPromoted(resolved.filter(p => p.artwork))
   }
 
-  async function loadAlbums() {
+  async function loadNow() {
+  setLoading(true)
+  try {
+    const params = genre !== 'All' ? `?genre=${encodeURIComponent(genre)}` : ''
+    const r = await fetch(`/api/spotify-releases${params}`)
+    const d = await r.json()
+    // Map iTunes fields to match AlbumCard props
+    const mapped = (d.albums || []).map(a => ({
+      id: a.collectionId,
+      name: a.collectionName,
+      artist: a.artistName,
+      release_date: a.releaseDate,
+      artwork: a.artworkUrl100?.replace('100x100', '300x300'),
+      itunesId: a.collectionId,
+      genre: a.primaryGenreName,
+    }))
+    setNowAlbums(mapped)
+  } catch(e) { console.error(e) }
+  setLoading(false)
+}
+
+  async function loadUpcoming() {
     setLoading(true)
     try {
-      const results = await Promise.all(
-        SEARCHES.map(({ term, genre }) =>
-          fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=album&limit=25&sort=recent`)
-            .then(r => r.json())
-            .then(d => (d.results || []).map(a => ({ ...a, _sourceGenre: genre })))
-            .catch(() => [])
-        )
-      )
-
-      // Build genre sets per album
-      const genreMap = new Map()
-      const flat = results.flat().filter(a => {
-        if (isJunk(a)) return false
-        if (!a.releaseDate) return false
-        if (new Date(a.releaseDate) < CUTOFF_DATE) return false
-        return true
-      })
-
-      for (const a of flat) {
-        if (!genreMap.has(a.collectionId)) genreMap.set(a.collectionId, new Set())
-        // Tag from the search term that found it
-        if (a._sourceGenre) genreMap.get(a.collectionId).add(a._sourceGenre)
-        // Tag from iTunes' own genre field via the map
-        if (a.primaryGenreName) {
-          const pg = a.primaryGenreName.toLowerCase()
-          if (ITUNES_GENRE_MAP[pg]) genreMap.get(a.collectionId).add(ITUNES_GENRE_MAP[pg])
-          for (const [key, val] of Object.entries(ITUNES_GENRE_MAP)) {
-            if (pg.includes(key) || key.includes(pg)) genreMap.get(a.collectionId).add(val)
-          }
-        }
-      }
-
-      // Sort newest first, dedupe by album ID only (allow multiple albums per artist)
-      const seen    = new Set()
-      const deduped = []
-      const sorted  = flat.sort((a, b) => new Date(b.releaseDate) - new Date(a.releaseDate))
-
-      for (const a of sorted) {
-        if (seen.has(a.collectionId)) continue
-        seen.add(a.collectionId)
-        deduped.push({ ...a, _genres: genreMap.get(a.collectionId) || new Set() })
-      }
-
-      setAlbums(deduped)
-    } catch (e) { console.error(e) }
+      const params = genre !== 'All' ? `?genre=${encodeURIComponent(genre)}` : ''
+      const r = await fetch(`/api/musicbrainz-upcoming${params}`)
+      const d = await r.json()
+      setUpcomingAlbums(d.releases || [])
+    } catch(e) { console.error(e) }
     setLoading(false)
   }
 
-  const filtered = activeGenre === 'All'
-    ? albums
-    : albums.filter(a => a._genres?.has(activeGenre))
-
+  const albums = tab === 'now' ? nowAlbums : upcomingAlbums
   const marqueeItems = [...promoted, ...promoted, ...promoted]
 
   return (
     <div>
-      {/* ── PROMOTED STRIP ── */}
+      {/* PROMOTED SCROLLING BANNER */}
       {promoted.length > 0 && (
-        <div style={{ background: 'linear-gradient(135deg, #fff0f5 0%, #ffe0ec 60%, #fff0f5 100%)', borderBottom: '1px solid rgba(255,0,102,0.13)', padding: '14px 0', overflow: 'hidden', position: 'relative' }}>
-          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 2, display: 'flex', alignItems: 'center', paddingLeft: 16, paddingRight: 52, background: 'linear-gradient(to right, #ffe0ec 55%, transparent)', pointerEvents: 'none' }}>
-            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 2, color: 'rgba(255,0,102,0.6)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Featured</span>
+        <div style={{ background: 'linear-gradient(135deg, #fff0f5 0%, #ffe0ec 60%, #fff0f5 100%)',
+          borderBottom: '1px solid rgba(255,0,102,0.13)', padding: '14px 0',
+          overflow: 'hidden', position: 'relative' }}>
+          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 2,
+            display: 'flex', alignItems: 'center', paddingLeft: 16, paddingRight: 52,
+            background: 'linear-gradient(to right, #ffe0ec 55%, transparent)', pointerEvents: 'none' }}>
+            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 2,
+              color: 'rgba(255,0,102,0.6)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Featured</span>
           </div>
-          <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: 2, width: 60, background: 'linear-gradient(to left, #fff0f5, transparent)', pointerEvents: 'none' }} />
-          <div style={{ display: 'flex', gap: 16, paddingLeft: 90, animation: 'marqueeScroll 65s linear infinite', width: 'max-content' }}>
+          <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: 2,
+            width: 60, background: 'linear-gradient(to left, #fff0f5, transparent)', pointerEvents: 'none' }} />
+          <div style={{ display: 'flex', gap: 16, paddingLeft: 90,
+            animation: 'marqueeScroll 65s linear infinite', width: 'max-content' }}>
             {marqueeItems.map((p, i) => (
-              <a key={i} href={p.link} target='_blank' rel='noopener noreferrer'
-                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px 8px 8px', borderRadius: 10, border: '1px solid rgba(255,0,102,0.18)', background: 'rgba(255,255,255,0.78)', textDecoration: 'none', flexShrink: 0, transition: 'background 0.15s' }}
-                onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.97)' }}
-                onMouseOut={e =>  { e.currentTarget.style.background = 'rgba(255,255,255,0.78)' }}
-              >
-                <img src={p.artwork} alt={p.name} style={{ width: 52, height: 52, borderRadius: 6, objectFit: 'cover', flexShrink: 0, boxShadow: '0 2px 10px rgba(0,0,0,0.12)' }} />
+              <a key={i} href={p.link} target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '8px 16px 8px 8px', borderRadius: 10,
+                  border: '1px solid rgba(255,0,102,0.18)',
+                  background: 'rgba(255,255,255,0.78)', textDecoration: 'none',
+                  flexShrink: 0, transition: 'background 0.15s' }}
+                onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.97)'}
+                onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.78)'}>
+                <img src={p.artwork} alt={p.name} style={{ width: 52, height: 52,
+                  borderRadius: 6, objectFit: 'cover', flexShrink: 0,
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.12)' }} />
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a1a', whiteSpace: 'nowrap', lineHeight: 1.3, marginBottom: 2 }}>{p.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--pink)', fontWeight: 600, whiteSpace: 'nowrap', marginBottom: 2 }}>{p.artist}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a1a',
+                    whiteSpace: 'nowrap', lineHeight: 1.3, marginBottom: 2 }}>{p.name}</div>
+                  <div style={{ fontSize: 11, color: '#FF0066', fontWeight: 600,
+                    whiteSpace: 'nowrap', marginBottom: 2 }}>{p.artist}</div>
                   <div style={{ fontSize: 10, color: '#aaa', whiteSpace: 'nowrap' }}>{p.releaseDate}</div>
                 </div>
               </a>
@@ -204,60 +213,47 @@ export default function ReleasesPage() {
         </div>
       )}
 
-      {/* ── MAIN ── */}
+      {/* MAIN */}
       <div style={{ maxWidth: 960, margin: '0 auto', padding: '28px 16px 100px' }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 4 }}>New Releases</h1>
-        <p style={{ fontSize: 14, color: 'var(--gray-text)', marginBottom: 20 }}>Fresh albums waiting for their Banger Ratio</p>
+        <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 4 }}>Releases</h1>
+        <p style={{ fontSize: 14, color: '#999', marginBottom: 24 }}>
+          {tab === 'now' ? 'Fresh albums waiting for their Banger Ratio' : 'Upcoming albums to watch'}
+        </p>
 
-        {/* Genre dropdown */}
-        <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <select
-            value={activeGenre}
-            onChange={e => setActiveGenre(e.target.value)}
-            style={{
-              padding: '10px 14px',
-              borderRadius: 10,
-              border: '1.5px solid var(--gray-200)',
-              background: 'white',
-              color: '#1a1a1a',
-              fontSize: 14,
-              fontWeight: 600,
-              fontFamily: 'inherit',
-              cursor: 'pointer',
-              appearance: 'none',
-              WebkitAppearance: 'none',
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,
-              backgroundRepeat: 'no-repeat',
-              backgroundPosition: 'right 12px center',
-              paddingRight: 36,
-              minWidth: 180,
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-            }}
-          >
-            {GENRES.map(g => (
-              <option key={g} value={g}>{g}</option>
+        {/* TABS + FILTER ROW */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+          flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+          <div style={{ display: 'flex', gap: 4, background: '#F5F5F5', borderRadius: 10, padding: 4 }}>
+            {[['now', '🔥 Out Now'], ['upcoming', '📅 Coming Soon']].map(([key, label]) => (
+              <button key={key} onClick={() => setTab(key)} style={{
+                padding: '7px 18px', borderRadius: 7, border: 'none', fontSize: 13,
+                fontWeight: tab === key ? 700 : 400,
+                background: tab === key ? 'white' : 'transparent',
+                color: tab === key ? '#1D1D1F' : '#999',
+                boxShadow: tab === key ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                cursor: 'pointer', transition: 'all 0.15s',
+              }}>{label}</button>
             ))}
-          </select>
-          {activeGenre !== 'All' && (
-            <button
-              onClick={() => setActiveGenre('All')}
-              style={{
-                padding: '10px 14px', borderRadius: 10, border: 'none',
-                background: 'var(--gray-100)', color: 'var(--gray-600)',
-                fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              Clear
-            </button>
-          )}
+          </div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+            <Select label="GENRE" value={genre} options={GENRES} onChange={setGenre} />
+            {genre !== 'All' && (
+              <button onClick={() => setGenre('All')} style={{
+                padding: '8px 12px', borderRadius: 8, border: '1px solid #E5E5E5',
+                background: 'white', color: '#999', fontSize: 12,
+                cursor: 'pointer', alignSelf: 'flex-end',
+              }}>Clear</button>
+            )}
+          </div>
         </div>
 
-        {/* Loading skeletons */}
+        {/* LOADING SKELETONS */}
         {loading && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 12 }}>
             {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                <div style={{ aspectRatio: '1', background: 'linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%)', backgroundSize: '400px 100%', animation: 'shimmer 1.4s ease infinite' }} />
+              <div key={i} style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #E5E5E5' }}>
+                <div style={{ aspectRatio: '1', background: 'linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%)',
+                  backgroundSize: '400px 100%', animation: 'shimmer 1.4s ease infinite' }} />
                 <div style={{ padding: 10 }}>
                   <div style={{ height: 11, borderRadius: 4, background: '#f0f0f0', width: '80%', marginBottom: 6 }} />
                   <div style={{ height: 9, borderRadius: 4, background: '#f0f0f0', width: '55%' }} />
@@ -267,36 +263,33 @@ export default function ReleasesPage() {
           </div>
         )}
 
-        {/* Album grid */}
-        {!loading && (
+        {/* ALBUM GRID */}
+        {!loading && albums.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '60px 24px' }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>🎵</div>
+            <p style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', marginBottom: 6 }}>
+              No {tab === 'now' ? 'recent' : 'upcoming'} releases{genre !== 'All' ? ` for ${genre}` : ''}
+            </p>
+            <p style={{ fontSize: 13, color: '#999' }}>Try a different filter or check back soon.</p>
+          </div>
+        )}
+
+        {!loading && albums.length > 0 && (
           <>
-            {filtered.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px 24px', color: 'var(--gray-text)' }}>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>🎵</div>
-                <p style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', marginBottom: 6 }}>No recent releases for this genre</p>
-                <p style={{ fontSize: 13 }}>Try a different filter, or check back soon.</p>
-              </div>
-            ) : (
-              <>
-                <p style={{ fontSize: 12, color: 'var(--gray-text)', marginBottom: 16 }}>{filtered.length} albums</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 12 }}>
-                  {filtered.map(a => (
-                    <a key={a.collectionId} href={`/album/${a.collectionId}`}
-                      style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)', background: 'white', display: 'block', transition: 'all 0.15s', textDecoration: 'none' }}
-                      onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.09)' }}
-                      onMouseOut={e =>  { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '' }}
-                    >
-                      <img src={a.artworkUrl100?.replace('100x100', '300x300')} alt='' style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
-                      <div style={{ padding: '8px 10px 10px' }}>
-                        <p style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2, color: '#1a1a1a' }}>{a.collectionName}</p>
-                        <p style={{ fontSize: 11, color: 'var(--gray-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>{a.artistName}</p>
-                        <p style={{ fontSize: 10, color: 'var(--gray-text)' }}>{new Date(a.releaseDate).toLocaleDateString()}</p>
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              </>
-            )}
+            <p style={{ fontSize: 12, color: '#999', marginBottom: 16 }}>{albums.length} albums</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 12 }}>
+              {albums.map(a => (
+                <AlbumCard
+                  key={a.id || a.collectionId}
+                  name={a.name || a.collectionName}
+                  artist={a.artists?.[0]?.name || a.artist || a.artistName}
+                  release_date={a.release_date || a.releaseDate}
+                  artwork={a.images?.[0]?.url || a.artwork || a.artworkUrl100?.replace('100x100','300x300')}
+                  itunesId={a.itunesId || a.collectionId}
+                  upcoming={tab === 'upcoming'}
+                />
+              ))}
+            </div>
           </>
         )}
       </div>
@@ -304,7 +297,6 @@ export default function ReleasesPage() {
       <style>{`
         @keyframes marqueeScroll { 0% { transform: translateX(0); } 100% { transform: translateX(calc(-100% / 3)); } }
         @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
-        div::-webkit-scrollbar { display: none; }
       `}</style>
     </div>
   )
