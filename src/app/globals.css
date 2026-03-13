@@ -198,3 +198,50 @@ input, textarea { font-family: inherit; }
   .hamburger   { display: flex !important; }
   .mobile-menu { display: block; }
 }
+/* ── Responsive Typography & Layout Fixes ── */
+
+/* Scale down page header on smaller screens */
+@media (max-width: 768px) {
+  .page-header h1 {
+    font-size: 1.75rem;
+  }
+
+  .page-header p {
+    font-size: 0.95rem;
+  }
+}
+
+/* Fix stats gap on tablets before flex-wrap kicks in */
+@media (max-width: 900px) {
+  .stats {
+    gap: 3rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .stats {
+    gap: 2rem;
+  }
+
+  .stat-number {
+    font-size: 2rem;
+  }
+}
+
+/* Tighter album grid on phones */
+@media (max-width: 480px) {
+  .album-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1rem;
+  }
+}
+
+/* Keyboard focus rings for accessibility */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--pink);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
