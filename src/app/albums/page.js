@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
@@ -9,16 +9,18 @@ const GENRES = ['All','Rock','Pop','Hip-Hop/Rap','R&B/Soul','Alternative','Count
 
 function AlbumsContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const artistFilter = searchParams.get('artist')
 
-  const [query,       setQuery]       = useState('')
-  const [results,     setResults]     = useState([])
-  const [itunesMap,   setItunesMap]   = useState({})
-  const [community,   setCommunity]   = useState([])
-  const [loading,     setLoading]     = useState(true)
-  const [searching,   setSearching]   = useState(false)
-  const [searchMode,  setSearchMode]  = useState('albums')
-  const [genre,       setGenre]       = useState('All')
+  const [query,      setQuery]      = useState('')
+  const [results,    setResults]    = useState([])
+  const [itunesMap,  setItunesMap]  = useState({})
+  const [community,  setCommunity]  = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [searching,  setSearching]  = useState(false)
+  const [clicking,   setClicking]   = useState(null)
+  const [searchMode, setSearchMode] = useState('albums')
+  const [genre,      setGenre]      = useState('All')
 
   useEffect(() => {
     supabase.from('albums').select('*')
@@ -31,49 +33,50 @@ function AlbumsContent() {
     setSearching(true)
     setResults([])
     setItunesMap({})
-
     try {
-      // Step 1: Search Spotify (fast, accurate)
-      const spotifyRes = await fetch(
-        '/api/spotify-search?q=' + encodeURIComponent(query) +
-        '&type=' + searchMode
-      )
-      const spotifyData = await spotifyRes.json()
-      const spotifyItems = searchMode === 'song'
-        ? (spotifyData.tracks || [])
-        : (spotifyData.albums || [])
-
-      setResults(spotifyItems)
-
-      // Step 2: For each result, find the iTunes collectionId in background
-      // so clicking works. We do this quietly after showing results.
-      const map = {}
-      await Promise.all(spotifyItems.slice(0, 10).map(async (item) => {
+      const res = await fetch('/api/spotify-search?q=' + encodeURIComponent(query) + '&type=' + searchMode)
+      const data = await res.json()
+      const items = searchMode === 'song' ? (data.tracks || []) : (data.albums || [])
+      setResults(items)
+      // Background iTunes ID resolution
+      items.slice(0, 12).forEach(async (item) => {
         try {
-          const hint = item.searchHint || (item.albumName + ' ' + item.artistName)
-          const res = await fetch(
-            'https://itunes.apple.com/search?term=' + encodeURIComponent(hint) +
-            '&entity=album&limit=1'
-          )
-          const d = await res.json()
+          const hint = item.searchHint || ((item.albumName || '') + ' ' + item.artistName)
+          const r = await fetch('https://itunes.apple.com/search?term=' + encodeURIComponent(hint) + '&entity=album&limit=1')
+          const d = await r.json()
           const match = d.results?.[0]
           if (match) {
             const key = item.spotifyId || item.spotifyAlbumId || item.spotifyTrackId
-            map[key] = match.collectionId
             setItunesMap(prev => ({ ...prev, [key]: match.collectionId }))
           }
         } catch {}
-      }))
-    } catch (err) {
-      console.error('Search error:', err)
-    }
-
+      })
+    } catch (err) { console.error(err) }
     setSearching(false)
   }
 
-  function getItunesId(item) {
+  // Click handler — if iTunes ID is ready use it, otherwise fetch it now
+  async function handleResultClick(item) {
     const key = item.spotifyId || item.spotifyAlbumId || item.spotifyTrackId
-    return itunesMap[key]
+    if (itunesMap[key]) {
+      router.push('/album/' + itunesMap[key])
+      return
+    }
+    setClicking(key)
+    try {
+      const hint = item.searchHint || ((item.albumName || '') + ' ' + item.artistName)
+      const r = await fetch('https://itunes.apple.com/search?term=' + encodeURIComponent(hint) + '&entity=album&limit=1')
+      const d = await r.json()
+      const match = d.results?.[0]
+      if (match) {
+        router.push('/album/' + match.collectionId)
+      } else {
+        alert('Could not find this album in iTunes. Try searching the album title directly.')
+      }
+    } catch {
+      alert('Something went wrong. Please try again.')
+    }
+    setClicking(null)
   }
 
   function ratioColor(r) {
@@ -99,7 +102,7 @@ function AlbumsContent() {
 
       {/* Search mode toggle */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: '1rem' }}>
-        {[['albums', 'Albums'], ['song', 'Songs & Tracks']].map(([mode, label]) => (
+        {[['albums','Albums'],['song','Songs & Tracks']].map(([mode, label]) => (
           <button key={mode} onClick={() => { setSearchMode(mode); setResults([]) }} style={{
             padding: '7px 20px', borderRadius: 20, fontSize: 13, fontWeight: 600,
             border: '1.5px solid ' + (searchMode === mode ? 'var(--pink)' : 'var(--border)'),
@@ -116,73 +119,55 @@ function AlbumsContent() {
           className="search-input"
           placeholder={searchMode === 'song'
             ? 'Search any song (e.g. Dry Spell, Kacey Musgraves)...'
-            : 'Search any album or artist (e.g. Deeper Well, Kacey Musgraves)...'}
+            : 'Search any album or artist...'}
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && doSearch()}
         />
-        <button className="primary-btn" onClick={doSearch} disabled={searching}
-          style={{ whiteSpace: 'nowrap' }}>
+        <button className="primary-btn" onClick={doSearch} disabled={searching} style={{ whiteSpace: 'nowrap' }}>
           {searching ? 'Searching...' : 'Search'}
         </button>
       </div>
 
-      {/* Spotify search results */}
+      {/* Spotify results */}
       {results.length > 0 && (
         <div style={{ marginBottom: '3rem' }}>
           <p style={{ fontSize: 13, color: 'var(--gray-text)', marginBottom: '1.2rem', textAlign: 'center' }}>
-            {searchMode === 'song'
-              ? 'Click any result to rate the full album'
-              : 'Click any album to rate it track by track'}
+            {searchMode === 'song' ? 'Click to rate the full album' : 'Click to rate track by track'}
           </p>
           <div className="album-grid">
             {results.map((item, i) => {
-              const itunesId = getItunesId(item)
-              const name     = searchMode === 'song' ? item.albumName : item.albumName
-              const artist   = item.artistName
-              const artwork  = item.artwork || item.albumArtwork
-              const key      = item.spotifyId || item.spotifyAlbumId || item.spotifyTrackId || i
+              const key     = item.spotifyId || item.spotifyAlbumId || item.spotifyTrackId || i
+              const name    = item.albumName || ''
+              const artist  = item.artistName || ''
+              const artwork = item.artwork || item.albumArtwork || ''
+              const isReady = !!itunesMap[key]
+              const isLoading = clicking === key
 
               return (
-                <div key={key} style={{ position: 'relative' }}>
-                  {itunesId ? (
-                    <Link href={'/album/' + itunesId} className="album-card">
-                      <div className="album-art">
-                        {artwork
-                          ? <img src={artwork} alt={name} />
-                          : <span style={{ fontSize: '2rem', color: 'var(--gray-text)' }}>♪</span>}
-                      </div>
-                      <div className="album-info">
-                        <div className="album-title">{name}</div>
-                        <div className="album-artist">{artist}</div>
-                        {searchMode === 'song' && item.trackName && (
-                          <div style={{ fontSize: '0.7rem', color: 'var(--pink)', marginTop: 2, fontWeight: 600 }}>
-                            Contains: {item.trackName}
-                          </div>
-                        )}
-                        {item.releaseDate && (
-                          <div style={{ fontSize: '0.7rem', color: 'var(--gray-text)', marginTop: 2 }}>
-                            {item.releaseDate.slice(0,4)}
-                          </div>
-                        )}
-                      </div>
-                    </Link>
-                  ) : (
-                    <div className="album-card" style={{ opacity: 0.7 }}>
-                      <div className="album-art">
-                        {artwork
-                          ? <img src={artwork} alt={name} />
-                          : <span style={{ fontSize: '2rem', color: 'var(--gray-text)' }}>♪</span>}
-                      </div>
-                      <div className="album-info">
-                        <div className="album-title">{name}</div>
-                        <div className="album-artist">{artist}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--gray-text)', marginTop: 2 }}>
-                          Loading...
+                <div key={key}
+                  onClick={() => handleResultClick(item)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="album-card" style={{ opacity: isLoading ? 0.6 : 1, transition: 'opacity 0.2s' }}>
+                    <div className="album-art">
+                      {artwork
+                        ? <img src={artwork} alt={name} />
+                        : <span style={{ fontSize: '2rem', color: 'var(--gray-text)' }}>♪</span>}
+                    </div>
+                    <div className="album-info">
+                      <div className="album-title">{name}</div>
+                      <div className="album-artist">{artist}</div>
+                      {searchMode === 'song' && item.trackName && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--pink)', marginTop: 2, fontWeight: 600 }}>
+                          Contains: {item.trackName}
                         </div>
+                      )}
+                      <div style={{ fontSize: '0.7rem', marginTop: 2, color: isReady ? '#00B84D' : 'var(--gray-text)', fontWeight: isReady ? 600 : 400 }}>
+                        {isLoading ? 'Loading...' : isReady ? 'Ready to rate' : item.releaseDate?.slice(0,4) || ''}
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               )
             })}
