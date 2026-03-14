@@ -47,7 +47,7 @@ function StatCounter({ value, label }) {
 
 function artFix(url) {
   if (!url) return null
-  return url.replace('100x100bb', '300x300bb').replace('600x600bb', '300x300bb').replace('100x100', '300x300')
+  return url.replace('100x100bb','300x300bb').replace('600x600bb','300x300bb').replace('100x100','300x300')
 }
 
 function ratioColor(r) {
@@ -56,23 +56,39 @@ function ratioColor(r) {
   return 'var(--pink)'
 }
 
+async function fetchCount(table) {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL + '/rest/v1/' + table + '?select=id'
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const res = await fetch(url, {
+      headers: {
+        'apikey': key,
+        'Authorization': 'Bearer ' + key,
+        'Prefer': 'count=exact',
+        'Range': '0-0',
+      }
+    })
+    const range = res.headers.get('content-range')
+    if (range) {
+      const total = range.split('/')[1]
+      return parseInt(total) || 0
+    }
+    return 0
+  } catch { return 0 }
+}
+
 export default function HomePage() {
   const [stats, setStats] = useState({ albums: 0, ratings: 0, members: 0 })
   const [topAlbums, setTopAlbums] = useState([])
 
   useEffect(() => {
     async function loadStats() {
-      // Use GET with count=exact in Prefer header — works around 503 on HEAD requests
-      const [albumsRes, ratingsRes, membersRes] = await Promise.all([
-        supabase.from('albums').select('id', { count: 'exact' }).limit(1),
-        supabase.from('ratings').select('id', { count: 'exact' }).limit(1),
-        supabase.from('profiles').select('id', { count: 'exact' }).limit(1),
+      const [albums, ratings, members] = await Promise.all([
+        fetchCount('albums'),
+        fetchCount('ratings'),
+        fetchCount('profiles'),
       ])
-      setStats({
-        albums:  albumsRes.count  || 0,
-        ratings: ratingsRes.count || 0,
-        members: membersRes.count || 0,
-      })
+      setStats({ albums, ratings, members })
     }
 
     async function loadTopAlbums() {
