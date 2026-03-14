@@ -62,11 +62,11 @@ export default function HomePage() {
 
   useEffect(() => {
     async function loadStats() {
-      // Use count header — the correct way to get row counts from Supabase
+      // Use GET with count=exact in Prefer header — works around 503 on HEAD requests
       const [albumsRes, ratingsRes, membersRes] = await Promise.all([
-        supabase.from('albums').select('*', { count: 'exact', head: true }),
-        supabase.from('ratings').select('*', { count: 'exact', head: true }),
-        supabase.from('profiles').select('*', { count: 'exact', head: true }),
+        supabase.from('albums').select('id', { count: 'exact' }).limit(1),
+        supabase.from('ratings').select('id', { count: 'exact' }).limit(1),
+        supabase.from('profiles').select('id', { count: 'exact' }).limit(1),
       ])
       setStats({
         albums:  albumsRes.count  || 0,
