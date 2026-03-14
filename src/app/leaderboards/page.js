@@ -43,7 +43,6 @@ export default function LeaderboardsPage() {
     q = q.order('banger_ratio', { ascending: false })
     const { data } = await q
     setAlbums(data || [])
-
     const { data: trackData } = await supabase
       .from('tracks')
       .select('*, albums!tracks_album_id_fkey(name, artist_name, artwork_url, itunes_collection_id)')
@@ -54,13 +53,10 @@ export default function LeaderboardsPage() {
     setLoading(false)
   }
 
-  // Build artists from albums
   const artistMap = {}
   albums.forEach(a => {
     if (!a.artist_name) return
-    if (!artistMap[a.artist_name]) {
-      artistMap[a.artist_name] = { name: a.artist_name, artwork: artFix(a.artwork_url), albums: 0, totalRatio: 0, totalRatings: 0 }
-    }
+    if (!artistMap[a.artist_name]) artistMap[a.artist_name] = { name: a.artist_name, artwork: artFix(a.artwork_url), albums: 0, totalRatio: 0, totalRatings: 0 }
     artistMap[a.artist_name].albums++
     artistMap[a.artist_name].totalRatio += parseFloat(a.banger_ratio || 0)
     artistMap[a.artist_name].totalRatings += (a.total_ratings || 0)
@@ -69,13 +65,15 @@ export default function LeaderboardsPage() {
     .map(a => ({ ...a, avgRatio: parseFloat((a.totalRatio / a.albums).toFixed(1)) }))
     .sort((a, b) => b.avgRatio - a.avgRatio)
 
-  const pill = (label, active, onClick) => (
+  // Box-style filter button
+  const box = (label, active, onClick) => (
     <button key={label} onClick={onClick} style={{
-      padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: active ? 600 : 400,
-      border: '1px solid ' + (active ? 'var(--pink)' : 'var(--border)'),
-      background: active ? 'var(--pink)' : 'white',
-      color: active ? 'white' : 'var(--gray-text)',
+      padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: active ? 600 : 400,
+      border: '1.5px solid ' + (active ? 'var(--pink)' : 'var(--border)'),
+      background: active ? 'rgba(255,0,102,0.06)' : 'white',
+      color: active ? 'var(--pink)' : 'var(--gray-text)',
       cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+      transition: 'all 0.15s',
     }}>{label}</button>
   )
 
@@ -91,14 +89,14 @@ export default function LeaderboardsPage() {
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px 80px' }}>
 
-      <div className="page-header" style={{ textAlign: 'left', marginBottom: 24 }}>
+      <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Leaderboards</h1>
         <p style={{ color: 'var(--gray-text)', fontSize: 14 }}>The highest-rated music, ranked by the community</p>
       </div>
 
-      {/* Primary tabs — Albums / Songs / Artists */}
+      {/* Primary tabs */}
       <div style={{
-        display: 'flex', gap: 4, marginBottom: 20,
+        display: 'flex', gap: 4, marginBottom: 24,
         background: '#f4f4f5', borderRadius: 12, padding: 4, width: 'fit-content',
       }}>
         {[['albums','Albums'],['tracks','Songs'],['artists','Artists']].map(([key, label]) => (
@@ -114,23 +112,32 @@ export default function LeaderboardsPage() {
         ))}
       </div>
 
-      {/* Genre + Decade filters — albums tab only */}
+      {/* Genre + Decade filter boxes — albums tab only */}
       {tab === 'albums' && (
-        <>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-            {GENRES.map(g => pill(g, genre === g, () => setGenre(g)))}
+        <div style={{
+          background: 'white', border: '1px solid var(--border)',
+          borderRadius: 14, padding: '16px 20px', marginBottom: 24,
+        }}>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-text)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Genre</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {GENRES.map(g => box(g, genre === g, () => setGenre(g)))}
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24 }}>
-            {DECADES.map(d => pill(d, decade === d, () => setDecade(d)))}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-text)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Decade</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {DECADES.map(d => box(d, decade === d, () => setDecade(d)))}
+            </div>
           </div>
-        </>
+        </div>
       )}
 
       {loading ? (
         <p style={{ textAlign: 'center', color: 'var(--gray-text)', paddingTop: '3rem' }}>Loading...</p>
       ) : (
         <>
-          {/* ALBUMS TAB */}
+          {/* ALBUMS */}
           {tab === 'albums' && (
             <div>
               {albums.length === 0 ? (
@@ -141,18 +148,10 @@ export default function LeaderboardsPage() {
                   onMouseOver={e => e.currentTarget.style.transform = 'translateX(3px)'}
                   onMouseOut={e => e.currentTarget.style.transform = ''}
                 >
-                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-text)', width: 24, flexShrink: 0, textAlign: 'center' }}>
-                    {i + 1}
-                  </span>
-                  <div style={{
-                    width: 52, height: 52, borderRadius: 8, overflow: 'hidden',
-                    background: '#f0f0f0', flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-text)', width: 24, flexShrink: 0, textAlign: 'center' }}>{i + 1}</span>
+                  <div style={{ width: 52, height: 52, borderRadius: 8, overflow: 'hidden', background: '#f0f0f0', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {artFix(album.artwork_url)
-                      ? <img src={artFix(album.artwork_url)} alt={album.name}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          onError={e => { e.target.style.display = 'none' }} />
+                      ? <img src={artFix(album.artwork_url)} alt={album.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none' }} />
                       : <span style={{ fontSize: '1.4rem', color: 'var(--gray-text)' }}>♪</span>}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -172,16 +171,12 @@ export default function LeaderboardsPage() {
             </div>
           )}
 
-          {/* SONGS TAB */}
+          {/* SONGS */}
           {tab === 'tracks' && (
             <div>
-              <p style={{ color: 'var(--gray-text)', fontSize: 13, marginBottom: 16 }}>
-                Individual tracks ranked by average community rating (1–7 scale).
-              </p>
+              <p style={{ color: 'var(--gray-text)', fontSize: 13, marginBottom: 16 }}>Individual tracks ranked by average community rating (1–7 scale).</p>
               {tracks.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'var(--gray-text)', paddingTop: '2rem' }}>
-                  No track ratings yet. Rate some albums to populate this list!
-                </p>
+                <p style={{ textAlign: 'center', color: 'var(--gray-text)', paddingTop: '2rem' }}>No track ratings yet. Rate some albums to populate this list!</p>
               ) : tracks.map((track, i) => {
                 const album = track.albums
                 return (
@@ -191,11 +186,7 @@ export default function LeaderboardsPage() {
                     onMouseOut={e => e.currentTarget.style.transform = ''}
                   >
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-text)', width: 24, flexShrink: 0, textAlign: 'center' }}>{i + 1}</span>
-                    <div style={{
-                      width: 52, height: 52, borderRadius: 8, overflow: 'hidden',
-                      background: '#f0f0f0', flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 8, overflow: 'hidden', background: '#f0f0f0', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {artFix(album?.artwork_url)
                         ? <img src={artFix(album.artwork_url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none' }} />
                         : <span style={{ fontSize: '1.4rem', color: 'var(--gray-text)' }}>♪</span>}
@@ -205,12 +196,8 @@ export default function LeaderboardsPage() {
                       <div style={{ fontSize: 12, color: 'var(--gray-text)' }}>{album?.artist_name} — {album?.name}</div>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--pink)' }}>
-                        {parseFloat(track.avg_rating).toFixed(1)}<span style={{ fontSize: 12, color: 'var(--gray-text)' }}>/7</span>
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--gray-text)' }}>
-                        {track.total_ratings} ratings{track.is_banger ? ' · 🔥' : ''}
-                      </div>
+                      <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--pink)' }}>{parseFloat(track.avg_rating).toFixed(1)}<span style={{ fontSize: 12, color: 'var(--gray-text)' }}>/7</span></div>
+                      <div style={{ fontSize: 11, color: 'var(--gray-text)' }}>{track.total_ratings} ratings{track.is_banger ? ' · 🔥' : ''}</div>
                     </div>
                   </Link>
                 )
@@ -218,12 +205,10 @@ export default function LeaderboardsPage() {
             </div>
           )}
 
-          {/* ARTISTS TAB */}
+          {/* ARTISTS */}
           {tab === 'artists' && (
             <div>
-              <p style={{ color: 'var(--gray-text)', fontSize: 13, marginBottom: 16 }}>
-                Artists ranked by average Banger Ratio across all their rated albums.
-              </p>
+              <p style={{ color: 'var(--gray-text)', fontSize: 13, marginBottom: 16 }}>Artists ranked by average Banger Ratio across all their rated albums.</p>
               {artists.length === 0 ? (
                 <p style={{ textAlign: 'center', color: 'var(--gray-text)', paddingTop: '2rem' }}>No artist data yet.</p>
               ) : artists.map((artist, i) => (
@@ -233,21 +218,14 @@ export default function LeaderboardsPage() {
                   onMouseOut={e => e.currentTarget.style.transform = ''}
                 >
                   <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-text)', width: 24, flexShrink: 0, textAlign: 'center' }}>{i + 1}</span>
-                  <div style={{
-                    width: 52, height: 52, borderRadius: '50%', overflow: 'hidden',
-                    background: '#f0f0f0', flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '1.2rem',
-                  }}>
+                  <div style={{ width: 52, height: 52, borderRadius: '50%', overflow: 'hidden', background: '#f0f0f0', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
                     {artist.artwork
                       ? <img src={artist.artwork} alt={artist.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none' }} />
                       : '♪'}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{artist.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--gray-text)' }}>
-                      {artist.albums} album{artist.albums !== 1 ? 's' : ''} rated · {artist.totalRatings} total ratings
-                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-text)' }}>{artist.albums} album{artist.albums !== 1 ? 's' : ''} rated · {artist.totalRatings} total ratings</div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 16, color: ratioColor(artist.avgRatio) }}>{artist.avgRatio}%</div>
