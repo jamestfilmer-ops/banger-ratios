@@ -22,11 +22,6 @@ function msToMin(ms) {
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0')
 }
 
-const timeout = (promise, ms) => Promise.race([
-  promise,
-  new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
-])
-
 export default function AlbumPage() {
   const { id: albumId } = useParams()
   const [album,     setAlbum]     = useState(null)
@@ -36,7 +31,6 @@ export default function AlbumPage() {
   const [user,      setUser]      = useState(null)
   const [loaded,    setLoaded]    = useState(false)
   const [error,     setError]     = useState(null)
-  const [saving,    setSaving]    = useState(false)
   const [saved,     setSaved]     = useState(false)
 
   useEffect(() => {
@@ -49,34 +43,22 @@ export default function AlbumPage() {
       setError(null)
       setLoaded(false)
 
-      // First try to load from Supabase (fast)
-      const { data: existing } = await supabase
+      // ALWAYS fetch from iTunes first — this is the source of truth
+      const res = await Promise.race([
+        fetch('https://itunes.apple.com/lookup?id=' + albumId + '&entity=song'),
+        new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 8000))
+      ])
+      const data = await res.json()
+      const results = data.results || []
+      const albumData = results.find(r => r.wrapperType === 'collection')
+      const trackData = results.filter(r => r.wrapperType === 'track')
+
+      if (!albumData) throw new Error('Album not found on iTunes')
+
+      // Upsert album — always update artwork from iTunes
+      const { data: dbAlbum, error: upsertErr } = await supabase
         .from('albums')
-        .select('*')
-        .eq('itunes_collection_id', albumId)
-        .single()
-
-      // Then fetch fresh from iTunes (gets correct artwork + tracks)
-      let albumData = null
-      let trackData = []
-      try {
-        const res = await timeout(
-          fetch('https://itunes.apple.com/lookup?id=' + albumId + '&entity=song'),
-          8000
-        )
-        const data = await res.json()
-        const results = data.results || []
-        albumData = results.find(r => r.wrapperType === 'collection')
-        trackData = results.filter(r => r.wrapperType === 'track')
-      } catch (fetchErr) {
-        console.warn('iTunes fetch failed, using Supabase fallback:', fetchErr.message)
-      }
-
-      let dbAlbum = existing
-
-      if (albumData) {
-        // Save fresh data back to Supabase
-        const { data: upserted } = await supabase.from('albums').upsert({
+        .upsert({
           itunes_collection_id: albumData.collectionId,
           name:         albumData.collectionName,
           artist_name:  albumData.artistName,
@@ -84,34 +66,30 @@ export default function AlbumPage() {
           release_date: albumData.releaseDate?.split('T')[0],
           genre:        albumData.primaryGenreName,
           track_count:  trackData.length,
-        }, { onConflict: 'itunes_collection_id' }).select().single()
+        }, { onConflict: 'itunes_collection_id' })
+        .select()
+        .single()
 
-        if (upserted) dbAlbum = upserted
-
-        if (dbAlbum && trackData.length > 0) {
-          const trackRows = trackData.map(t => ({
-            album_id:        dbAlbum.id,
-            itunes_track_id: t.trackId,
-            name:            t.trackName,
-            track_number:    t.trackNumber,
-            duration_ms:     t.trackTimeMillis,
-            preview_url:     t.previewUrl,
-          }))
-          await supabase.from('tracks').upsert(trackRows, { onConflict: 'itunes_track_id' })
-        }
-      }
-
-      if (!dbAlbum) {
-        setError('Album not found')
-        setLoaded(true)
-        return
-      }
-
+      if (upsertErr) throw upsertErr
       setAlbum(dbAlbum)
 
-      // Load tracks from DB
+      // Always upsert tracks from iTunes
+      if (trackData.length > 0) {
+        const trackRows = trackData.map(t => ({
+          album_id:        dbAlbum.id,
+          itunes_track_id: t.trackId,
+          name:            t.trackName,
+          track_number:    t.trackNumber,
+          duration_ms:     t.trackTimeMillis,
+          preview_url:     t.previewUrl,
+        }))
+        await supabase.from('tracks').upsert(trackRows, { onConflict: 'itunes_track_id' })
+      }
+
+      // Load tracks from DB (with avg ratings)
       const { data: dbTracks } = await supabase
-        .from('tracks').select('*').eq('album_id', dbAlbum.id)
+        .from('tracks').select('*')
+        .eq('album_id', dbAlbum.id)
         .order('track_number', { ascending: true })
       setTracks(dbTracks || [])
 
@@ -192,8 +170,9 @@ export default function AlbumPage() {
           boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
         }}>
           {artUrl
-            ? <img src={artUrl} alt={album.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                onError={e => { e.target.style.display='none' }} />
+            ? <img src={artUrl} alt={album.name}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={e => { e.target.style.display = 'none' }} />
             : <span style={{ fontSize: 48, color: 'var(--gray-text)' }}>♪</span>}
         </div>
 
@@ -237,7 +216,8 @@ export default function AlbumPage() {
           }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
             </svg>
             Share
           </button>
@@ -251,7 +231,11 @@ export default function AlbumPage() {
           <span style={{ fontWeight: 600, color: progress === 100 ? '#00B84D' : 'var(--gray-text)' }}>{progress}%</span>
         </div>
         <div style={{ height: 6, background: 'var(--bg-soft)', borderRadius: 3, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: progress + '%', background: progress === 100 ? '#00B84D' : 'var(--pink)', borderRadius: 3, transition: 'width 0.3s ease' }} />
+          <div style={{
+            height: '100%', width: progress + '%',
+            background: progress === 100 ? '#00B84D' : 'var(--pink)',
+            borderRadius: 3, transition: 'width 0.3s ease',
+          }} />
         </div>
       </div>
 
@@ -262,8 +246,13 @@ export default function AlbumPage() {
           borderRadius: 12, padding: '14px 18px', marginBottom: 24,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
         }}>
-          <span style={{ fontSize: 14, color: 'var(--gray-text)' }}>Sign in to save your ratings and contribute to the community score.</span>
-          <a href="/auth" style={{ padding: '8px 20px', borderRadius: 8, background: 'var(--pink)', color: 'white', fontSize: 13, fontWeight: 600 }}>Sign In</a>
+          <span style={{ fontSize: 14, color: 'var(--gray-text)' }}>
+            Sign in to save your ratings and contribute to the community score.
+          </span>
+          <a href="/auth" style={{
+            padding: '8px 20px', borderRadius: 8, background: 'var(--pink)',
+            color: 'white', fontSize: 13, fontWeight: 600,
+          }}>Sign In</a>
         </div>
       )}
 
@@ -277,71 +266,62 @@ export default function AlbumPage() {
       </div>
 
       {/* Tracks */}
-      {tracks.length === 0 ? (
-        <div style={{ textAlign: 'center', color: 'var(--gray-text)', padding: '2rem' }}>
-          <p>No tracks loaded yet. <button onClick={loadAlbum} style={{ color: 'var(--pink)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Retry</button></p>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {tracks.map(track => {
-            const myScore  = myRatings[track.id]
-            const isSkipped = skipped[track.id]
-            return (
-              <div key={track.id} style={{
-                background: 'white', border: '1px solid var(--border)', borderRadius: 14,
-                padding: '14px 16px', opacity: isSkipped ? 0.45 : 1, transition: 'opacity 0.2s',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                  <span style={{ fontSize: 13, color: 'var(--gray-text)', width: 20, flexShrink: 0, paddingTop: 2, textAlign: 'right' }}>
-                    {track.track_number}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 600, fontSize: 14 }}>{track.name}</span>
-                      {track.is_banger && <span style={{ fontSize: 14 }}>🔥</span>}
-                      {track.duration_ms && <span style={{ fontSize: 12, color: 'var(--gray-text)' }}>{msToMin(track.duration_ms)}</span>}
-                      {track.avg_rating > 0 && (
-                        <span style={{ fontSize: 12, color: 'var(--gray-text)' }}>
-                          Avg: {parseFloat(track.avg_rating).toFixed(1)}/7
-                          {track.total_ratings > 0 ? ' · ' + track.total_ratings + ' ratings' : ''}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                      {[1,2,3,4,5,6,7].map(n => (
-                        <button key={n} onClick={() => rateTrack(track.id, n)} style={{
-                          width: 38, height: 38, borderRadius: 10, border: 'none',
-                          background: myScore === n ? 'var(--pink)' : (n >= 5 ? 'rgba(255,0,102,0.07)' : 'var(--bg-soft)'),
-                          color: myScore === n ? 'white' : (n >= 5 ? 'var(--pink)' : 'var(--gray-text)'),
-                          fontWeight: myScore === n ? 700 : 500, fontSize: 14,
-                          cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
-                          transform: myScore === n ? 'scale(1.1)' : 'scale(1)',
-                        }}>{n}</button>
-                      ))}
-                      <button onClick={() => skipTrack(track.id)} style={{
-                        padding: '0 14px', height: 38, borderRadius: 10,
-                        border: '1.5px solid ' + (isSkipped ? 'var(--pink)' : 'var(--border)'),
-                        background: isSkipped ? 'rgba(255,0,102,0.07)' : 'white',
-                        color: isSkipped ? 'var(--pink)' : 'var(--gray-text)',
-                        fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-                      }}>{isSkipped ? 'Unskip' : 'Skip'}</button>
-                    </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {tracks.map(track => {
+          const myScore   = myRatings[track.id]
+          const isSkipped = skipped[track.id]
+          return (
+            <div key={track.id} style={{
+              background: 'white', border: '1px solid var(--border)', borderRadius: 14,
+              padding: '14px 16px', opacity: isSkipped ? 0.45 : 1, transition: 'opacity 0.2s',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                <span style={{ fontSize: 13, color: 'var(--gray-text)', width: 20, flexShrink: 0, paddingTop: 2, textAlign: 'right' }}>
+                  {track.track_number}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>{track.name}</span>
+                    {track.is_banger && <span>🔥</span>}
+                    {track.duration_ms && <span style={{ fontSize: 12, color: 'var(--gray-text)' }}>{msToMin(track.duration_ms)}</span>}
+                    {track.avg_rating > 0 && (
+                      <span style={{ fontSize: 12, color: 'var(--gray-text)' }}>
+                        Avg {parseFloat(track.avg_rating).toFixed(1)}/7 · {track.total_ratings} ratings
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {[1,2,3,4,5,6,7].map(n => (
+                      <button key={n} onClick={() => rateTrack(track.id, n)} style={{
+                        width: 40, height: 40, borderRadius: 10, border: 'none',
+                        background: myScore === n ? 'var(--pink)' : n >= 5 ? 'rgba(255,0,102,0.07)' : 'var(--bg-soft)',
+                        color: myScore === n ? 'white' : n >= 5 ? 'var(--pink)' : 'var(--gray-text)',
+                        fontWeight: myScore === n ? 700 : 500, fontSize: 15,
+                        cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+                        transform: myScore === n ? 'scale(1.12)' : 'scale(1)',
+                      }}>{n}</button>
+                    ))}
+                    <button onClick={() => skipTrack(track.id)} style={{
+                      padding: '0 16px', height: 40, borderRadius: 10,
+                      border: '1.5px solid ' + (isSkipped ? 'var(--pink)' : 'var(--border)'),
+                      background: isSkipped ? 'rgba(255,0,102,0.07)' : 'white',
+                      color: isSkipped ? 'var(--pink)' : 'var(--gray-text)',
+                      fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                    }}>{isSkipped ? 'Unskip' : 'Skip'}</button>
                   </div>
                 </div>
               </div>
-            )
-          })}
-        </div>
-      )}
+            </div>
+          )
+        })}
+      </div>
 
       {saved && (
         <div style={{
           position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
           background: '#111', color: 'white', padding: '12px 24px', borderRadius: 12,
           fontSize: 14, fontWeight: 500, zIndex: 999,
-        }}>
-          Saved ✓
-        </div>
+        }}>Saved ✓</div>
       )}
     </div>
   )
