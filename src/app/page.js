@@ -5,9 +5,9 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
 const HOW_IT_WORKS = [
-  { step: '01', title: 'Search any album', body: 'Type any album name or artist. Every record ever released is searchable via iTunes — 100 million tracks and counting.' },
+  { step: '01', title: 'Search any album', body: 'Type any album name or artist. Every record ever released is searchable — 100 million tracks and counting.' },
   { step: '02', title: 'Rate every track 1-7', body: 'Not just a thumbs up. A real score for every song. 5 and above counts as a banger. Below that? Filler.' },
-  { step: '03', title: 'The Banger Ratio is calculated', body: 'Bangers divided by total tracks times 100. Simple. Communal. Impossible to argue with once you have seen your favorite album number.' },
+  { step: '03', title: 'The Banger Ratio is calculated', body: 'Bangers divided by total tracks times 100. Simple. Communal. Impossible to argue with.' },
 ]
 
 function useCountUp(target, duration) {
@@ -16,7 +16,7 @@ function useCountUp(target, duration) {
   const ref = useRef(null)
   useEffect(() => {
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && !startedRef.current) {
+      if (entry.isIntersecting && !startedRef.current && target > 0) {
         startedRef.current = true
         const start = performance.now()
         const tick = (now) => {
@@ -61,18 +61,32 @@ export default function HomePage() {
   const [topAlbums, setTopAlbums] = useState([])
 
   useEffect(() => {
-    supabase.from('albums').select('id', { count: 'exact', head: true }).then(r => {
-      supabase.from('ratings').select('id', { count: 'exact', head: true }).then(r2 => {
-        supabase.from('profiles').select('id', { count: 'exact', head: true }).then(r3 => {
-          setStats({ albums: r.count || 0, ratings: r2.count || 0, members: r3.count || 0 })
-        })
+    async function loadStats() {
+      // Use count header — the correct way to get row counts from Supabase
+      const [albumsRes, ratingsRes, membersRes] = await Promise.all([
+        supabase.from('albums').select('*', { count: 'exact', head: true }),
+        supabase.from('ratings').select('*', { count: 'exact', head: true }),
+        supabase.from('profiles').select('*', { count: 'exact', head: true }),
+      ])
+      setStats({
+        albums:  albumsRes.count  || 0,
+        ratings: ratingsRes.count || 0,
+        members: membersRes.count || 0,
       })
-    })
-    supabase.from('albums').select('id, name, artist_name, artwork_url, banger_ratio, itunes_collection_id')
-      .gt('total_ratings', 0)
-      .order('banger_ratio', { ascending: false })
-      .limit(14)
-      .then(({ data }) => setTopAlbums(data || []))
+    }
+
+    async function loadTopAlbums() {
+      const { data } = await supabase
+        .from('albums')
+        .select('id, name, artist_name, artwork_url, banger_ratio, itunes_collection_id')
+        .gt('total_ratings', 0)
+        .order('banger_ratio', { ascending: false })
+        .limit(16)
+      setTopAlbums(data || [])
+    }
+
+    loadStats()
+    loadTopAlbums()
   }, [])
 
   return (
@@ -145,7 +159,7 @@ export default function HomePage() {
       {/* STATS */}
       <section style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'white', padding: '3rem 2rem' }}>
         <div className="stats" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
-          <StatCounter value={stats.albums} label="Albums Rated" />
+          <StatCounter value={stats.albums}  label="Albums Rated" />
           <StatCounter value={stats.ratings} label="Track Ratings" />
           <StatCounter value={stats.members} label="Community Members" />
         </div>
@@ -203,7 +217,11 @@ export default function HomePage() {
                 background: i === 0 ? 'rgba(255,0,102,0.03)' : 'transparent',
                 border: '1px solid ' + (i === 0 ? 'rgba(255,0,102,0.12)' : 'var(--border)'),
                 marginBottom: 8, textDecoration: 'none', color: 'inherit',
-              }}>
+                transition: 'background 0.15s',
+              }}
+                onMouseOver={e => { if (i !== 0) e.currentTarget.style.background = 'var(--bg-soft)' }}
+                onMouseOut={e => { e.currentTarget.style.background = i === 0 ? 'rgba(255,0,102,0.03)' : 'transparent' }}
+              >
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-text)', width: 24, flexShrink: 0, textAlign: 'center' }}>
                   {i === 0 ? '🏆' : i + 1}
                 </span>
@@ -245,7 +263,6 @@ export default function HomePage() {
           to { transform: translateX(-50%); }
         }
       `}</style>
-
     </main>
   )
 }
