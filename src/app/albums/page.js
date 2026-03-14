@@ -1,268 +1,199 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
 
-// These are shown as starter albums if no community ratings exist yet
-const SEED_ALBUMS = [
-  { itunes_id: 1440768268, title: 'To Pimp a Butterfly',   artist: 'Kendrick Lamar' },
-  { itunes_id: 617154241,  title: 'good kid, m.A.A.d city', artist: 'Kendrick Lamar' },
-  { itunes_id: 1122185081, title: 'DAMN.',                  artist: 'Kendrick Lamar' },
-  { itunes_id: 1146195536, title: 'Blonde',                 artist: 'Frank Ocean' },
-  { itunes_id: 1440831453, title: 'Flower Boy',             artist: 'Tyler, the Creator' },
-  { itunes_id: 1490488656, title: 'IGOR',                   artist: 'Tyler, the Creator' },
-  { itunes_id: 1527285389, title: 'SOS',                    artist: 'SZA' },
-  { itunes_id: 1440935467, title: 'Ctrl',                   artist: 'SZA' },
-  { itunes_id: 1558475672, title: 'Punisher',               artist: 'Phoebe Bridgers' },
-  { itunes_id: 1549484521, title: 'Happier Than Ever',      artist: 'Billie Eilish' },
-  { itunes_id: 1440765827, title: 'channel ORANGE',         artist: 'Frank Ocean' },
-  { itunes_id: 1252085583, title: 'Lemonade',               artist: 'Beyoncé' },
-]
+const GENRES = ['All','Rock','Pop','Hip-Hop/Rap','R&B/Soul','Alternative','Country','Electronic','Jazz','Classical']
 
-export default function AlbumsPage() {
+function AlbumsContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const artistFilter = searchParams.get('artist')
 
-  const [query, setQuery]         = useState('')
-  const [results, setResults]     = useState([])
-  const [dbAlbums, setDbAlbums]   = useState([])
-  const [searching, setSearching] = useState(false)
-  const [loading, setLoading]     = useState(true)
+  const [query, setQuery]           = useState('')
+  const [results, setResults]       = useState([])
+  const [community, setCommunity]   = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [searching, setSearching]   = useState(false)
+  const [searchMode, setSearchMode] = useState('albums')
+  const [genre, setGenre]           = useState('All')
 
-  // Load community-rated albums from the database on page load
   useEffect(() => {
-    supabase
-      .from('albums')
-      .select('*')
-      .order('banger_ratio', { ascending: false })
-      .limit(60)
-      .then(({ data }) => {
-        setDbAlbums(data || [])
-        setLoading(false)
-      })
+    supabase.from('albums').select('*')
+      .order('banger_ratio', { ascending: false, nullsFirst: false })
+      .then(({ data }) => { setCommunity(data || []); setLoading(false) })
   }, [])
 
-  // Search iTunes when user submits the form
-  async function search(e) {
-    e.preventDefault()
+  async function doSearch() {
     if (!query.trim()) return
     setSearching(true)
     setResults([])
     try {
-      const res  = await fetch(
-        `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=album&limit=20`
+      const entity = searchMode === 'songs' ? 'musicTrack' : 'album'
+      const res = await fetch(
+        'https://itunes.apple.com/search?term=' + encodeURIComponent(query) +
+        '&entity=' + entity + '&limit=20'
       )
       const data = await res.json()
       setResults(data.results || [])
-    } catch {
-      setResults([])
-    }
+    } catch { setResults([]) }
     setSearching(false)
   }
 
-  return (
-    <main style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 24px 80px' }}>
+  function artUrl(url) {
+    if (!url) return null
+    return url.replace('100x100', '300x300').replace('60x60', '300x300')
+  }
 
-      {/* ── Page header ── */}
-      <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 700, color: 'var(--black)', margin: '0 0 8px' }}>
-          Rate an Album
-        </h1>
-        <p style={{ color: 'var(--gray-600)', fontSize: 15, margin: 0 }}>
-          Search any album and rate it track by track. See how it stacks up.
-        </p>
+  const displayed = community.filter(a => {
+    if (artistFilter) return a.artist_name?.toLowerCase().includes(artistFilter.toLowerCase())
+    if (genre !== 'All') return a.genre === genre
+    return true
+  })
+
+  function ratioColor(r) {
+    if (r >= 90) return '#00B84D'
+    if (r >= 75) return '#FF9500'
+    return 'var(--pink)'
+  }
+
+  return (
+    <main className="section" style={{ paddingTop: '2rem' }}>
+      <div className="page-header">
+        <h1>{artistFilter ? artistFilter + "'s Albums" : 'Search & Rate'}</h1>
+        <p>{artistFilter ? 'Community ratings for ' + artistFilter : 'Find any album or song. Rate it track by track.'}</p>
       </div>
 
-      {/* ── Search bar ── */}
-      <form
-        onSubmit={search}
-        style={{
-          display: 'flex', maxWidth: 540, marginBottom: 48,
-          borderRadius: 12, border: '2px solid var(--gray-200)', overflow: 'hidden',
-        }}
-      >
+      {/* Search mode toggle */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: '1rem' }}>
+        {[['albums', 'Albums'], ['songs', 'Songs & Tracks']].map(([mode, label]) => (
+          <button key={mode} onClick={() => { setSearchMode(mode); setResults([]) }} style={{
+            padding: '7px 20px', borderRadius: 20, fontSize: 13, fontWeight: 600,
+            border: '1.5px solid ' + (searchMode === mode ? 'var(--pink)' : 'var(--border)'),
+            background: searchMode === mode ? 'var(--pink)' : 'white',
+            color: searchMode === mode ? 'white' : 'var(--gray-text)',
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {/* Search bar */}
+      <div className="search-wrap">
         <input
-          type="text"
-          placeholder="Search any album or artist..."
+          className="search-input"
+          placeholder={searchMode === 'songs'
+            ? 'Search any song (e.g. Dry Spell, Kacey Musgraves)...'
+            : 'Search any album or artist (e.g. Deeper Well, Kacey Musgraves)...'}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          style={{
-            flex: 1, padding: '14px 18px', border: 'none', fontSize: 15,
-            outline: 'none', background: 'white', color: 'var(--black)',
-          }}
+          onKeyDown={e => e.key === 'Enter' && doSearch()}
         />
-        <button
-          type="submit"
-          disabled={searching}
-          style={{
-            padding: '14px 24px', background: 'var(--pink)', border: 'none',
-            color: 'white', fontWeight: 700, fontSize: 14, cursor: 'pointer',
-            opacity: searching ? 0.7 : 1,
-          }}
-        >
+        <button className="primary-btn" onClick={doSearch} disabled={searching} style={{ whiteSpace: 'nowrap' }}>
           {searching ? 'Searching...' : 'Search'}
         </button>
-      </form>
+      </div>
 
-      {/* ── iTunes search results ── */}
+      {/* Results */}
       {results.length > 0 && (
-        <section style={{ marginBottom: 56 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--black)', marginBottom: 20 }}>
-            Search Results
-          </h2>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))',
-            gap: '1.25rem',
-          }}>
-            {results.map(album => (
-              <div
-                key={album.collectionId}
-                onClick={() => router.push(`/album/${album.collectionId}`)}
-                style={{
-                  cursor: 'pointer', borderRadius: 12,
-                  border: '1px solid var(--gray-200)',
-                  padding: 12, background: 'white',
-                  transition: 'box-shadow 0.15s',
-                }}
-                onMouseOver={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}
-                onMouseOut={e  => e.currentTarget.style.boxShadow = 'none'}
+        <div style={{ marginBottom: '3rem' }}>
+          <p style={{ fontSize: 13, color: 'var(--gray-text)', marginBottom: '1.2rem', textAlign: 'center' }}>
+            {searchMode === 'songs'
+              ? 'Click any result to rate the full album'
+              : 'Click any album to rate it track by track'}
+          </p>
+          <div className="album-grid">
+            {results.map(item => (
+              <Link
+                key={item.trackId || item.collectionId}
+                href={'/album/' + item.collectionId}
+                className="album-card"
               >
-                {album.artworkUrl100 ? (
-                  <img
-                    src={album.artworkUrl100.replace('100x100', '400x400')}
-                    alt={album.collectionName}
-                    style={{ width: '100%', borderRadius: 8, marginBottom: 10, display: 'block' }}
-                  />
-                ) : (
-                  <div style={{
-                    width: '100%', aspectRatio: '1', background: 'var(--gray-100)',
-                    borderRadius: 8, marginBottom: 10,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32,
-                  }}>🎵</div>
-                )}
-                <p style={{
-                  fontWeight: 700, fontSize: 13, marginBottom: 4, color: 'var(--black)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {album.collectionName}
-                </p>
-                <p style={{
-                  color: 'var(--gray-600)', fontSize: 12,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {album.artistName}
-                </p>
-                <p style={{ color: 'var(--pink)', fontSize: 12, marginTop: 8, fontWeight: 600 }}>
-                  Rate it →
-                </p>
-              </div>
+                <div className="album-art">
+                  {artUrl(item.artworkUrl100)
+                    ? <img src={artUrl(item.artworkUrl100)} alt="" />
+                    : <span style={{ fontSize: '2rem', color: 'var(--gray-text)' }}>♪</span>}
+                </div>
+                <div className="album-info">
+                  <div className="album-title">
+                    {searchMode === 'songs' ? (item.collectionName || item.trackName) : item.collectionName}
+                  </div>
+                  <div className="album-artist">{item.artistName}</div>
+                  {searchMode === 'songs' && item.trackName && (
+                    <div style={{ fontSize: '0.7rem', color: 'var(--pink)', marginTop: '0.2rem', fontWeight: 600 }}>
+                      Contains: {item.trackName}
+                    </div>
+                  )}
+                </div>
+              </Link>
             ))}
           </div>
-        </section>
+        </div>
       )}
 
-      {/* ── Community rated albums (or seed albums if none yet) ── */}
-      <section>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--black)', marginBottom: 20 }}>
-          {dbAlbums.length > 0 ? 'Community Rated' : 'Popular Albums to Rate'}
-        </h2>
+      {/* Genre filter */}
+      {!artistFilter && results.length === 0 && (
+        <div className="genre-tabs">
+          {GENRES.map(g => (
+            <button key={g} className={'genre-tab' + (genre === g ? ' active' : '')} onClick={() => setGenre(g)}>{g}</button>
+          ))}
+        </div>
+      )}
 
-        {loading ? (
-          <p style={{ color: 'var(--gray-600)' }}>Loading...</p>
-        ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))',
-            gap: '1.25rem',
-          }}>
+      {/* Community rated */}
+      <div style={{ marginBottom: '1rem' }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.3rem' }}>Community Rated</h2>
+        <p style={{ color: 'var(--gray-text)', fontSize: '0.85rem' }}>Albums already scored. Click any to add your rating.</p>
+      </div>
 
-            {/* Show real DB albums if they exist */}
-            {dbAlbums.length > 0 ? dbAlbums.map(album => (
-              <div
-                key={album.id}
-                onClick={() => router.push(`/album/${album.itunes_collection_id || album.id}`)}
-                style={{
-                  cursor: 'pointer', borderRadius: 12,
-                  border: '1px solid var(--gray-200)',
-                  padding: 12, background: 'white',
-                  transition: 'box-shadow 0.15s',
-                }}
-                onMouseOver={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}
-                onMouseOut={e  => e.currentTarget.style.boxShadow = 'none'}
-              >
-                {album.artwork_url ? (
-                  <img
-                    src={album.artwork_url}
-                    alt={album.name}
-                    style={{ width: '100%', borderRadius: 8, marginBottom: 10, display: 'block' }}
-                  />
-                ) : (
-                  <div style={{
-                    width: '100%', aspectRatio: '1', background: 'var(--gray-100)',
-                    borderRadius: 8, marginBottom: 10,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32,
-                  }}>🎵</div>
-                )}
-                <p style={{
-                  fontWeight: 700, fontSize: 13, marginBottom: 4, color: 'var(--black)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {album.name}
-                </p>
-                <p style={{
-                  color: 'var(--gray-600)', fontSize: 12, marginBottom: 6,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {album.artist_name}
-                </p>
+      {loading ? (
+        <div className="album-grid">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} style={{ background: 'white', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
+              <div style={{ width: '100%', aspectRatio: '1', background: '#f0f0f0' }} />
+              <div style={{ padding: '0.9rem' }}>
+                <div style={{ height: 12, background: '#f0f0f0', borderRadius: 4, marginBottom: 8 }} />
+                <div style={{ height: 10, background: '#f4f4f4', borderRadius: 4, width: '70%' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : displayed.length === 0 ? (
+        <p style={{ textAlign: 'center', color: 'var(--gray-text)', marginTop: '3rem' }}>
+          No albums yet — search one above and be the first to rate it!
+        </p>
+      ) : (
+        <div className="album-grid">
+          {displayed.map(album => (
+            <Link key={album.id} href={'/album/' + album.itunes_collection_id} className="album-card">
+              <div className="album-art">
+                {album.artwork_url
+                  ? <img src={album.artwork_url.replace('100x100bb', '300x300bb').replace('600x600bb', '300x300bb')}
+                      alt={album.name} onError={e => { e.target.style.display = 'none' }} />
+                  : <span style={{ fontSize: '2rem', color: 'var(--gray-text)' }}>♪</span>}
+              </div>
+              <div className="album-info">
+                <div className="album-title">{album.name}</div>
+                <div className="album-artist">{album.artist_name}</div>
                 {album.banger_ratio != null && (
-                  <p style={{ color: 'var(--pink)', fontWeight: 800, fontSize: 14 }}>
-                    {album.banger_ratio}%
-                    <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--gray-600)', marginLeft: 4 }}>
-                      banger ratio
-                    </span>
-                  </p>
+                  <div className="album-ratio" style={{ color: ratioColor(album.banger_ratio) }}>
+                    {album.banger_ratio}% banger ratio
+                  </div>
                 )}
               </div>
-
-            )) : SEED_ALBUMS.map(album => (
-              /* Show seed albums if the DB is empty */
-              <div
-                key={album.itunes_id}
-                onClick={() => router.push(`/album/${album.itunes_id}`)}
-                style={{
-                  cursor: 'pointer', borderRadius: 12,
-                  border: '1px solid var(--gray-200)',
-                  padding: 12, background: 'white',
-                  transition: 'box-shadow 0.15s',
-                }}
-                onMouseOver={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}
-                onMouseOut={e  => e.currentTarget.style.boxShadow = 'none'}
-              >
-                <div style={{
-                  width: '100%', aspectRatio: '1', background: 'var(--gray-100)',
-                  borderRadius: 8, marginBottom: 10,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32,
-                }}>🎵</div>
-                <p style={{
-                  fontWeight: 700, fontSize: 13, marginBottom: 4, color: 'var(--black)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {album.title}
-                </p>
-                <p style={{ color: 'var(--gray-600)', fontSize: 12, marginBottom: 6 }}>
-                  {album.artist}
-                </p>
-                <p style={{ color: 'var(--pink)', fontSize: 12, fontWeight: 600 }}>
-                  Be the first to rate →
-                </p>
-              </div>
-            ))}
-
-          </div>
-        )}
-      </section>
-
+            </Link>
+          ))}
+        </div>
+      )}
     </main>
+  )
+}
+
+export default function AlbumsPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 60, textAlign: 'center', color: 'var(--gray-text)' }}>Loading...</div>}>
+      <AlbumsContent />
+    </Suspense>
   )
 }
