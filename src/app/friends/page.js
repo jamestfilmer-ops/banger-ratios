@@ -1,273 +1,296 @@
 'use client'
-
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useToast } from '../components/ToastContext'
+import Link from 'next/link'
 
-export default function FriendsPage() {
-  const [user, setUser]             = useState(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState([])
-  const [following, setFollowing]   = useState([])
-  const [followers, setFollowers]   = useState([])
-  const [compatibility, setCompatibility] = useState({})
-  const [loading, setLoading]       = useState(true)
-  const [searching, setSearching]   = useState(false)
-  const [followLoading, setFollowLoading] = useState({})
-  const toast = useToast()
+function artFix(url) {
+  if (!url) return null
+  return url.replace('100x100bb', '300x300bb').replace('600x600bb', '300x300bb')
+}
 
-  useEffect(() => { init() }, [])
+function initials(name) {
+  if (!name) return '?'
+  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+}
 
-  async function init() {
-    const { data: { user: u } } = await supabase.auth.getUser()
-    if (!u) { setLoading(false); return }
-    setUser(u)
-    await Promise.all([loadFollowing(u.id), loadFollowers(u.id)])
-    setLoading(false)
-  }
+function LoggedOutPreview() {
+  const [topRaters, setTopRaters] = useState([])
+  const [hotAlbums, setHotAlbums] = useState([])
 
-  async function loadFollowing(userId) {
-    const { data } = await supabase
-      .from('follows')
-      .select('following_id, profiles!follows_following_id_fkey(id, username, display_name, avatar_url, bio)')
-      .eq('follower_id', userId)
-    const profiles = (data || []).map(r => r.profiles).filter(Boolean)
-    setFollowing(profiles)
-    profiles.forEach(p => loadCompatibility(userId, p.id))
-  }
-
-  async function loadFollowers(userId) {
-    const { data } = await supabase
-      .from('follows')
-      .select('follower_id, profiles!follows_follower_id_fkey(id, username, display_name, avatar_url, bio)')
-      .eq('following_id', userId)
-    setFollowers((data || []).map(r => r.profiles).filter(Boolean))
-  }
-
-  async function loadCompatibility(myId, theirId) {
-    const { data: myRatings } = await supabase.from('ratings').select('track_id, score').eq('user_id', myId)
-    const { data: theirRatings } = await supabase.from('ratings').select('track_id, score').eq('user_id', theirId)
-    if (!myRatings?.length || !theirRatings?.length) {
-      setCompatibility(prev => ({ ...prev, [theirId]: null })); return
-    }
-    const myMap = {}
-    myRatings.forEach(r => myMap[r.track_id] = r.score)
-    const theirMap = {}
-    theirRatings.forEach(r => theirMap[r.track_id] = r.score)
-    const sharedIds = Object.keys(myMap).filter(id => theirMap[id])
-    if (sharedIds.length < 3) {
-      setCompatibility(prev => ({ ...prev, [theirId]: null })); return
-    }
-    const agreements = sharedIds.map(id => 1 - Math.abs(myMap[id] - theirMap[id]) / 6)
-    const score = Math.round((agreements.reduce((a, b) => a + b, 0) / agreements.length) * 100)
-    setCompatibility(prev => ({ ...prev, [theirId]: score }))
-  }
-
-  async function searchUsers(e) {
-    e.preventDefault()
-    if (!searchQuery.trim()) return
-    setSearching(true)
-    setSearchResults([])
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, username, display_name, avatar_url, bio')
-      .or(`username.ilike.%${searchQuery}%,display_name.ilike.%${searchQuery}%`)
-      .neq('id', user?.id || '')
-      .limit(10)
-    if (error) { toast('Search failed. Try again.', 'error') }
-    else {
-      setSearchResults(data || [])
-      if (!data?.length) toast('No users found.', 'info')
-    }
-    setSearching(false)
-  }
-
-  async function follow(profileId) {
-    if (!user) { toast('Sign in to follow people.', 'info'); return }
-    setFollowLoading(prev => ({ ...prev, [profileId]: true }))
-    const { error } = await supabase.from('follows').insert({ follower_id: user.id, following_id: profileId })
-    if (error) { toast('Failed to follow. Try again.', 'error') }
-    else { toast('Following!', 'success'); await loadFollowing(user.id) }
-    setFollowLoading(prev => ({ ...prev, [profileId]: false }))
-  }
-
-  async function unfollow(targetId) {
-    const { error } = await supabase
-      .from('follows')
-      .delete()
-      .eq('follower_id', user.id)
-      .eq('following_id', targetId)
-    if (error) {
-      console.error('Unfollow error:', error)
-      toast('Failed to unfollow. Try again.', 'error')
-      return
-    }
-    await loadFollowing(user.id)
-  }
-
-  const followingIds = new Set(following.map(p => p.id))
-
-  function compatColor(score) {
-    if (score >= 80) return '#16a34a'
-    if (score >= 60) return '#FF0066'
-    return '#6B7280'
-  }
-
-  if (loading) return (
-    <div style={{ maxWidth: 700, margin: '60px auto', padding: '0 24px', textAlign: 'center' }}>
-      <p style={{ color: 'var(--gray-text)' }}>Loading...</p>
-    </div>
-  )
-
-  if (!user) return (
-    <div style={{ maxWidth: 700, margin: '60px auto', padding: '0 24px', textAlign: 'center' }}>
-      <p style={{ fontSize: 40, marginBottom: 16 }}>👥</p>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 10 }}>Find Your People</h1>
-      <p style={{ color: 'var(--gray-text)', marginBottom: 24 }}>Sign in to follow people and see their ratings.</p>
-      <a href="/auth" style={{
-        display: 'inline-block', padding: '12px 28px', background: 'var(--pink)',
-        color: 'white', borderRadius: 10, fontWeight: 600,
-      }}>Sign In</a>
-    </div>
-  )
+  useEffect(() => {
+    supabase.from('profiles').select('id, username, display_name, avatar_url').limit(12)
+      .then(async ({ data }) => {
+        if (!data?.length) return
+        const withCounts = await Promise.all(data.map(async p => {
+          const { count } = await supabase.from('ratings').select('id', { count: 'exact', head: true }).eq('user_id', p.id)
+          return { ...p, ratingCount: count || 0 }
+        }))
+        setTopRaters(withCounts.filter(p => p.ratingCount > 0).sort((a, b) => b.ratingCount - a.ratingCount))
+      })
+    supabase.from('albums').select('id, name, artist_name, artwork_url, banger_ratio, itunes_collection_id, total_ratings')
+      .gt('total_ratings', 0).order('total_ratings', { ascending: false }).limit(6)
+      .then(({ data }) => setHotAlbums(data || []))
+  }, [])
 
   return (
-    <div style={{ maxWidth: 700, margin: '0 auto', padding: '40px 24px 80px' }}>
-      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 6 }}>👥 Friends</h1>
-      <p style={{ color: 'var(--gray-text)', fontSize: 14, marginBottom: 32 }}>
-        Follow people to see their ratings. Music is better with people.
-      </p>
+    <main style={{ maxWidth: 800, margin: '0 auto', padding: '48px 24px 80px' }}>
+      <div style={{ textAlign: 'center', marginBottom: 48 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 12 }}>Community</h1>
+        <p style={{ color: 'var(--gray-text)', fontSize: 16, maxWidth: 440, margin: '0 auto 28px', lineHeight: 1.6 }}>
+          See what other listeners are rating. Follow people whose taste matches yours.
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+          <Link href="/auth" style={{
+            display: 'inline-block', background: 'var(--pink)', color: 'white',
+            padding: '11px 24px', borderRadius: 12, fontWeight: 600, fontSize: 14,
+          }}>Join to follow people</Link>
+          <Link href="/auth" style={{
+            display: 'inline-block', border: '1.5px solid var(--border)',
+            padding: '11px 24px', borderRadius: 12, fontWeight: 500, fontSize: 14, color: 'var(--black)',
+          }}>Sign in</Link>
+        </div>
+      </div>
 
-      {/* Search */}
-      <form onSubmit={searchUsers} style={{ display: 'flex', gap: 10, marginBottom: 32 }}>
-        <input
-          type="text"
-          placeholder="Search by username or name..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          style={{
-            flex: 1, padding: '11px 16px', borderRadius: 10,
-            border: '1.5px solid var(--border)', fontSize: 14, outline: 'none',
-            fontFamily: 'inherit',
-          }}
-          onFocus={e => e.target.style.borderColor = 'var(--pink)'}
-          onBlur={e => e.target.style.borderColor = 'var(--border)'}
-        />
-        <button type="submit" style={{
-          padding: '11px 20px', background: 'var(--pink)', border: 'none',
-          color: 'white', borderRadius: 10, fontWeight: 600, cursor: 'pointer',
-          fontSize: 14, fontFamily: 'inherit',
-        }}>
-          {searching ? '...' : 'Search'}
-        </button>
-      </form>
-
-      {/* Search Results */}
-      {searchResults.length > 0 && (
-        <section style={{ marginBottom: 40 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: 'var(--gray-text)' }}>SEARCH RESULTS</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {searchResults.map(p => (
-              <UserCard key={p.id} profile={p} isFollowing={followingIds.has(p.id)}
-                onFollow={() => follow(p.id)} onUnfollow={() => unfollow(p.id)}
-                loading={followLoading[p.id]} compatibility={compatibility[p.id]} compatColor={compatColor} />
+      {topRaters.length > 0 && (
+        <section style={{ marginBottom: 48 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Active community members</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+            {topRaters.map(person => (
+              <div key={person.id} style={{
+                background: 'white', border: '1px solid var(--border)', borderRadius: 14,
+                padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center',
+              }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: '50%', overflow: 'hidden',
+                  background: 'rgba(255,0,102,0.1)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 16, fontWeight: 700, color: 'var(--pink)', flexShrink: 0,
+                }}>
+                  {person.avatar_url
+                    ? <img src={person.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : initials(person.display_name || person.username)}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{person.display_name || person.username}</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray-text)' }}>{person.ratingCount} ratings</div>
+                </div>
+              </div>
             ))}
           </div>
         </section>
       )}
 
-      {/* Following */}
-      <section style={{ marginBottom: 40 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: 'var(--gray-text)' }}>
-          FOLLOWING ({following.length})
-        </h2>
-        {following.length === 0 ? (
-          <div style={{ background: 'white', borderRadius: 12, border: '1px solid var(--border)', padding: '40px 24px', textAlign: 'center' }}>
-            <p style={{ fontSize: 32, marginBottom: 10 }}>🔍</p>
-            <p style={{ fontWeight: 600, marginBottom: 6 }}>Nobody yet</p>
-            <p style={{ color: 'var(--gray-text)', fontSize: 14 }}>Search for people above to follow them.</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {following.map(p => (
-              <UserCard key={p.id} profile={p} isFollowing={true}
-                onFollow={() => follow(p.id)} onUnfollow={() => unfollow(p.id)}
-                loading={followLoading[p.id]} compatibility={compatibility[p.id]} compatColor={compatColor} />
+      {hotAlbums.length > 0 && (
+        <section style={{ marginBottom: 48 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Most discussed albums</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {hotAlbums.map(album => (
+              <Link key={album.id} href={'/album/' + album.itunes_collection_id} style={{
+                display: 'flex', alignItems: 'center', gap: 14,
+                background: 'white', border: '1px solid var(--border)',
+                borderRadius: 12, padding: '12px 16px', textDecoration: 'none', color: 'inherit',
+              }}>
+                <div style={{ width: 42, height: 42, borderRadius: 8, overflow: 'hidden', background: 'var(--bg-soft)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {artFix(album.artwork_url)
+                    ? <img src={artFix(album.artwork_url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none' }} />
+                    : '♪'}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{album.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--gray-text)' }}>{album.artist_name}</div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--pink)' }}>{album.banger_ratio}%</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray-text)' }}>{album.total_ratings} ratings</div>
+                </div>
+              </Link>
             ))}
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
-      {/* Followers */}
-      <section>
-        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: 'var(--gray-text)' }}>
-          FOLLOWERS ({followers.length})
-        </h2>
-        {followers.length === 0 ? (
-          <div style={{ background: 'white', borderRadius: 12, border: '1px solid var(--border)', padding: '40px 24px', textAlign: 'center' }}>
-            <p style={{ color: 'var(--gray-text)', fontSize: 14 }}>No followers yet. Share your profile to get some!</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {followers.map(p => (
-              <UserCard key={p.id} profile={p} isFollowing={followingIds.has(p.id)}
-                onFollow={() => follow(p.id)} onUnfollow={() => unfollow(p.id)}
-                loading={followLoading[p.id]} compatibility={compatibility[p.id]} compatColor={compatColor} />
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
+      <div style={{
+        background: 'rgba(255,0,102,0.04)', border: '1px solid rgba(255,0,102,0.12)',
+        borderRadius: 16, padding: '28px', textAlign: 'center',
+      }}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Join the conversation</h3>
+        <p style={{ color: 'var(--gray-text)', fontSize: 14, marginBottom: 18, lineHeight: 1.6 }}>
+          Create a free account to follow other raters, see their activity, and add your ratings.
+        </p>
+        <Link href="/auth" style={{
+          display: 'inline-block', background: 'var(--pink)', color: 'white',
+          padding: '11px 28px', borderRadius: 12, fontWeight: 600, fontSize: 14,
+        }}>Create free account</Link>
+      </div>
+    </main>
   )
 }
 
-function UserCard({ profile, isFollowing, onFollow, onUnfollow, loading, compatibility, compatColor }) {
+function LoggedInFriends({ user }) {
+  const [following, setFollowing] = useState([])
+  const [feed, setFeed] = useState([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => { loadFriends() }, [])
+
+  async function loadFriends() {
+    setLoading(true)
+    const { data: follows } = await supabase.from('follows')
+      .select('following_id, profiles!follows_following_id_fkey(id, username, display_name, avatar_url)')
+      .eq('follower_id', user.id)
+    const followingList = follows?.map(f => f.profiles).filter(Boolean) || []
+    setFollowing(followingList)
+
+    if (followingList.length > 0) {
+      const ids = followingList.map(p => p.id)
+      const { data: ratings } = await supabase.from('ratings')
+        .select('user_id, profiles!ratings_user_id_fkey(username, display_name, avatar_url), tracks!ratings_track_id_fkey(albums!tracks_album_id_fkey(id, name, artist_name, artwork_url, banger_ratio, itunes_collection_id)), created_at')
+        .in('user_id', ids).order('created_at', { ascending: false }).limit(40)
+
+      const seen = new Set()
+      const deduped = []
+      for (const row of (ratings || [])) {
+        const album = row.tracks?.albums
+        if (!album) continue
+        const key = row.user_id + '_' + album.id
+        if (seen.has(key)) continue
+        seen.add(key)
+        deduped.push({ userId: row.user_id, username: row.profiles?.display_name || row.profiles?.username, avatar: row.profiles?.avatar_url, album, ratedAt: row.created_at })
+      }
+      setFeed(deduped.slice(0, 20))
+    }
+    setLoading(false)
+  }
+
+  async function searchPeople(q) {
+    if (!q.trim()) { setSearchResults([]); return }
+    const { data } = await supabase.from('profiles').select('id, username, display_name, avatar_url')
+      .ilike('username', '%' + q + '%').neq('id', user.id).limit(8)
+    setSearchResults(data || [])
+  }
+
+  async function follow(id) {
+    await supabase.from('follows').upsert({ follower_id: user.id, following_id: id }, { onConflict: 'follower_id,following_id' })
+    loadFriends(); setSearchResults([]); setSearchQuery('')
+  }
+
+  async function unfollow(id) {
+    await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', id)
+    loadFriends()
+  }
+
+  const isFollowing = (id) => following.some(f => f.id === id)
+
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 14,
-      background: 'white', borderRadius: 12, border: '1px solid var(--border)',
-      padding: '14px 16px',
-    }}>
-      <a href={`/profile/${profile.username}`}>
-        <div style={{
-          width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-          background: profile.avatar_url ? `url(${profile.avatar_url}) center/cover` : 'var(--pink)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'white', fontWeight: 700, fontSize: 16,
-        }}>
-          {!profile.avatar_url && (profile.username?.[0] || '?').toUpperCase()}
-        </div>
-      </a>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <a href={`/profile/${profile.username}`} style={{ fontWeight: 600, fontSize: 15 }}>
-          {profile.display_name || profile.username}
-        </a>
-        <p style={{ fontSize: 12, color: 'var(--gray-text)' }}>@{profile.username}</p>
-        {profile.bio && (
-          <p style={{ fontSize: 12, color: 'var(--gray-text)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {profile.bio}
-          </p>
-        )}
-        {compatibility !== undefined && compatibility !== null && (
-          <p style={{ fontSize: 11, fontWeight: 600, marginTop: 3, color: compatColor(compatibility) }}>
-            🎵 You agree {compatibility}% of the time
-          </p>
+    <main style={{ maxWidth: 760, margin: '0 auto', padding: '40px 24px 80px' }}>
+      <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 4 }}>Friends</h1>
+      <p style={{ color: 'var(--gray-text)', marginBottom: 28 }}>Follow people and see what they are rating.</p>
+
+      <div style={{ position: 'relative', marginBottom: 32 }}>
+        <input className="search-input" style={{ width: '100%' }}
+          placeholder="Search by username..."
+          value={searchQuery}
+          onChange={e => { setSearchQuery(e.target.value); searchPeople(e.target.value) }}
+        />
+        {searchResults.length > 0 && (
+          <div style={{
+            position: 'absolute', top: '110%', left: 0, right: 0,
+            background: 'white', border: '1px solid var(--border)',
+            borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 50, overflow: 'hidden',
+          }}>
+            {searchResults.map(person => (
+              <div key={person.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px' }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,0,102,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'var(--pink)', flexShrink: 0 }}>
+                  {initials(person.display_name || person.username)}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{person.display_name || person.username}</div>
+                  <div style={{ fontSize: 12, color: 'var(--gray-text)' }}>@{person.username}</div>
+                </div>
+                <button onClick={() => isFollowing(person.id) ? unfollow(person.id) : follow(person.id)} style={{
+                  padding: '6px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                  background: isFollowing(person.id) ? 'var(--bg-soft)' : 'var(--pink)',
+                  color: isFollowing(person.id) ? 'var(--gray-text)' : 'white',
+                  border: '1px solid ' + (isFollowing(person.id) ? 'var(--border)' : 'var(--pink)'),
+                }}>{isFollowing(person.id) ? 'Following' : 'Follow'}</button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
-      <button
-        onClick={isFollowing ? onUnfollow : onFollow}
-        disabled={loading}
-        style={{
-          padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-          cursor: loading ? 'default' : 'pointer',
-          border: isFollowing ? '1.5px solid var(--border)' : 'none',
-          background: isFollowing ? 'white' : 'var(--pink)',
-          color: isFollowing ? 'var(--gray-text)' : 'white',
-          fontFamily: 'inherit', flexShrink: 0, opacity: loading ? 0.6 : 1,
-        }}
-      >
-        {loading ? '...' : isFollowing ? 'Unfollow' : 'Follow'}
-      </button>
-    </div>
+
+      {loading ? (
+        <p style={{ color: 'var(--gray-text)', textAlign: 'center' }}>Loading...</p>
+      ) : following.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--gray-text)' }}>
+          <div style={{ fontSize: '3rem', marginBottom: 12 }}>👋</div>
+          <p>You are not following anyone yet. Search above to find people.</p>
+        </div>
+      ) : (
+        <>
+          {feed.length > 0 && (
+            <section style={{ marginBottom: 36 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Recent activity</h2>
+              {feed.map((item, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'white', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', marginBottom: 8 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,0,102,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'var(--pink)', flexShrink: 0, overflow: 'hidden' }}>
+                    {item.avatar ? <img src={item.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials(item.username)}
+                  </div>
+                  <div style={{ width: 36, height: 36, borderRadius: 6, overflow: 'hidden', background: 'var(--bg-soft)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {artFix(item.album.artwork_url) ? <img src={artFix(item.album.artwork_url)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none' }} /> : '♪'}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13 }}>
+                      <span style={{ color: 'var(--pink)', fontWeight: 700 }}>{item.username}</span>{' rated '}
+                      <span style={{ fontWeight: 600 }}>{item.album.name}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--gray-text)' }}>{item.album.artist_name}</div>
+                  </div>
+                  {item.album.banger_ratio != null && (
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--pink)', flexShrink: 0 }}>{item.album.banger_ratio}%</div>
+                  )}
+                </div>
+              ))}
+            </section>
+          )}
+          <section>
+            <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Following ({following.length})</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+              {following.map(person => (
+                <div key={person.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'white', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,0,102,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'var(--pink)', flexShrink: 0 }}>
+                    {initials(person.display_name || person.username)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{person.display_name || person.username}</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray-text)' }}>@{person.username}</div>
+                  </div>
+                  <button onClick={() => unfollow(person.id)} style={{ fontSize: 11, color: 'var(--gray-text)', background: 'none', border: '1px solid var(--border)', padding: '3px 10px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Unfollow
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+    </main>
   )
+}
+
+export default function FriendsPage() {
+  const [user, setUser] = useState(null)
+  const [checking, setChecking] = useState(true)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => { setUser(data?.user || null); setChecking(false) })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => setUser(session?.user || null))
+    return () => subscription.unsubscribe()
+  }, [])
+
+  if (checking) return <div style={{ padding: 60, textAlign: 'center', color: 'var(--gray-text)' }}>Loading...</div>
+  if (!user) return <LoggedOutPreview />
+  return <LoggedInFriends user={user} />
 }
