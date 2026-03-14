@@ -1,318 +1,317 @@
-// FILE: src/app/album/[id]/page.js
 'use client'
+
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-const BADGES = {
-  untouchable: { label: '💎 Untouchable',          min: 95 },
-  banger:      { label: '🔥 Certified Banger',      min: 80 },
-  gold:        { label: '🥇 Solid Gold',            min: 65 },
-  hits:        { label: '🎵 More Hits Than Misses', min: 50 },
-  mixed:       { label: '🎲 Hit or Miss',           min: 35 },
-  filler:      { label: '⚠️ Filler Heavy',          min: 20 },
-  skip:        { label: '❌ Skip It',               min: 0  },
-}
+const SCALE = { 1:'Awful', 2:'Bad', 3:'Meh', 4:'OK', 5:'Good', 6:'Great', 7:'Perfect' }
+
 function getBadge(ratio) {
-  if (ratio >= 95) return BADGES.untouchable
-  if (ratio >= 80) return BADGES.banger
-  if (ratio >= 65) return BADGES.gold
-  if (ratio >= 50) return BADGES.hits
-  if (ratio >= 35) return BADGES.mixed
-  if (ratio >= 20) return BADGES.filler
-  return BADGES.skip
+  if (ratio >= 95) return { label: '💎 Untouchable',        color: '#00B84D' }
+  if (ratio >= 80) return { label: '🔥 Certified Banger',   color: '#FF6B00' }
+  if (ratio >= 65) return { label: '🥇 Solid Gold',         color: '#FF9500' }
+  if (ratio >= 50) return { label: '🎵 More Hits Than Misses', color: '#3B82F6' }
+  if (ratio >= 35) return { label: '🎲 Hit or Miss',        color: '#8B5CF6' }
+  if (ratio >= 20) return { label: '⚠️ Filler Heavy',       color: '#F59E0B' }
+  return               { label: '❌ Skip It',               color: '#EF4444' }
 }
 
-const SCORE_LABELS = {
-  7: 'Perfect',
-  6: 'Great',
-  5: 'Good',
-  4: 'Decent',
-  3: 'Filler',
-  2: 'Weak',
-  1: 'Not for me',
+function msToMin(ms) {
+  if (!ms) return ''
+  const s = Math.floor(ms / 1000)
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0')
 }
 
 export default function AlbumPage() {
-  const params = useParams()
-  const [album, setAlbum]             = useState(null)
-  const [tracks, setTracks]           = useState([])
-  const [userRatings, setUserRatings] = useState({})
-  const [user, setUser]               = useState(null)
-  const [loading, setLoading]         = useState(true)
-  const [saving, setSaving]           = useState({})
-  const [notFound, setNotFound]       = useState(false)
+  const { id: albumId } = useParams()
+  const [album,     setAlbum]     = useState(null)
+  const [tracks,    setTracks]    = useState([])
+  const [myRatings, setMyRatings] = useState({})
+  const [skipped,   setSkipped]   = useState({})
+  const [user,      setUser]      = useState(null)
+  const [loaded,    setLoaded]    = useState(false)
+  const [error,     setError]     = useState(null)
+  const [saving,    setSaving]    = useState(false)
+  const [saved,     setSaved]     = useState(false)
+  const [dirty,     setDirty]     = useState(false)
 
-  useEffect(() => { init() }, [])
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data?.user || null))
+    loadAlbum()
+  }, [albumId])
 
-  async function init() {
-    const { data: { user: u } } = await supabase.auth.getUser()
-    setUser(u)
-    const id = params.id
+  async function loadAlbum() {
+    try {
+      setError(null)
+      const res = await fetch('https://itunes.apple.com/lookup?id=' + albumId + '&entity=song')
+      if (!res.ok) throw new Error('iTunes API error')
+      const data = await res.json()
+      const results = data.results || []
+      const albumData = results.find(r => r.wrapperType === 'collection')
+      const trackData = results.filter(r => r.wrapperType === 'track')
+      if (!albumData) throw new Error('Album not found')
 
-    const { data: alb } = await supabase
-      .from('albums')
-      .select('*')
-      .eq('itunes_collection_id', id)
-      .maybeSingle()
+      const { data: dbAlbum, error: upsertErr } = await supabase.from('albums').upsert({
+        itunes_collection_id: albumData.collectionId,
+        name:         albumData.collectionName,
+        artist_name:  albumData.artistName,
+        artwork_url:  albumData.artworkUrl100?.replace('100x100', '600x600'),
+        release_date: albumData.releaseDate?.split('T')[0],
+        genre:        albumData.primaryGenreName,
+        track_count:  trackData.length,
+      }, { onConflict: 'itunes_collection_id' }).select().single()
 
-    if (alb) {
-      setAlbum(alb)
-      const { data: tr } = await supabase
-        .from('tracks')
-        .select('*')
-        .eq('album_id', alb.id)
+      if (upsertErr) throw upsertErr
+      setAlbum(dbAlbum)
+
+      const trackRows = trackData.map(t => ({
+        album_id:        dbAlbum.id,
+        itunes_track_id: t.trackId,
+        name:            t.trackName,
+        track_number:    t.trackNumber,
+        duration_ms:     t.trackTimeMillis,
+        preview_url:     t.previewUrl,
+      }))
+      await supabase.from('tracks').upsert(trackRows, { onConflict: 'itunes_track_id' })
+
+      const { data: dbTracks } = await supabase
+        .from('tracks').select('*').eq('album_id', dbAlbum.id)
         .order('track_number', { ascending: true })
-      setTracks(tr || [])
+      setTracks(dbTracks || [])
+
+      const { data: { user: u } } = await supabase.auth.getUser()
+      setUser(u || null)
       if (u) {
         const { data: ratings } = await supabase
-          .from('ratings')
-          .select('track_id, score')
-          .eq('user_id', u.id)
-          .in('track_id', (tr || []).map(t => t.id))
+          .from('ratings').select('track_id, score')
+          .eq('user_id', u.id).eq('album_id', dbAlbum.id)
         const map = {}
-        ;(ratings || []).forEach(r => map[r.track_id] = r.score)
-        setUserRatings(map)
+        ;(ratings || []).forEach(r => { map[r.track_id] = r.score })
+        setMyRatings(map)
       }
-      setLoading(false)
-      return
+      setLoaded(true)
+    } catch (err) {
+      setError(err.message)
+      setLoaded(true)
     }
-
-    try {
-      const itunesRes  = await fetch(
-        `https://itunes.apple.com/lookup?id=${id}&entity=song`
-      )
-      const itunesData = await itunesRes.json()
-
-      if (!itunesData.results || itunesData.results.length === 0) {
-        setNotFound(true)
-        setLoading(false)
-        return
-      }
-
-      const collection = itunesData.results.find(r => r.wrapperType === 'collection')
-        || itunesData.results[0]
-
-      if (!collection?.collectionId && !collection?.collectionName) {
-        setNotFound(true)
-        setLoading(false)
-        return
-      }
-
-      setAlbum({
-        id: id,
-        name: collection.collectionName || collection.trackName || 'Unknown Album',
-        artist_name: collection.artistName || 'Unknown Artist',
-        artwork_url: (collection.artworkUrl100 || collection.artworkUrl60 || '')
-          .replace('100x100bb', '600x600bb'),
-        itunes_collection_id: id,
-        genre: collection.primaryGenreName || null,
-        release_date: collection.releaseDate || null,
-        banger_ratio: null,
-        total_ratings: 0,
-      })
-
-      setTracks(
-        itunesData.results
-          .filter(r => r.wrapperType === 'track')
-          .map(t => ({
-            id: t.trackId,
-            name: t.trackName,
-            track_number: t.trackNumber,
-            duration_ms: t.trackTimeMillis,
-            album_id: id,
-          }))
-      )
-    } catch (e) {
-      setNotFound(true)
-    }
-
-    setLoading(false)
   }
 
   async function rateTrack(trackId, score) {
     if (!user) { window.location.href = '/auth'; return }
-    setSaving(prev => ({ ...prev, [trackId]: true }))
-    await supabase.from('ratings').upsert({
-      user_id: user.id, track_id: trackId, score,
-      album_id: album.id
-    }, { onConflict: 'user_id,track_id' })
-    setUserRatings(prev => ({ ...prev, [trackId]: score }))
-    setSaving(prev => ({ ...prev, [trackId]: false }))
+    setMyRatings(prev => ({ ...prev, [trackId]: score }))
+    setDirty(true)
+    setSaved(false)
+    await supabase.from('ratings').upsert(
+      { user_id: user.id, track_id: trackId, album_id: album.id, score },
+      { onConflict: 'user_id,track_id' }
+    )
+    const { data: recalc } = await supabase
+      .rpc('recalculate_banger_ratio', { p_album_id: album.id })
+    const { data: updated } = await supabase
+      .from('albums').select('*').eq('id', album.id).single()
+    if (updated) setAlbum(updated)
+    setSaved(true)
+    setDirty(false)
   }
 
-  async function handleShare() {
-    const shareData = {
-      title: `${album.name} — Banger Ratios`,
-      text: `${album.name} by ${album.artist_name} has a ${album.banger_ratio ?? '?'}% Banger Ratio on Banger Ratios`,
-      url: window.location.href,
-    }
-    if (navigator.share) {
-      try { await navigator.share(shareData) } catch (e) {}
-    } else {
-      await navigator.clipboard.writeText(window.location.href)
-      alert('Link copied!')
-    }
+  function skipTrack(trackId) {
+    setSkipped(prev => ({ ...prev, [trackId]: !prev[trackId] }))
   }
 
-  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#94A3B8' }}>Loading...</div>
-
-  if (notFound || !album) return (
-    <main style={{ padding: '4rem 2rem', textAlign: 'center' }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>🎵</div>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 12 }}>Album Not Found</h1>
-      <p style={{ color: 'var(--gray-text)', marginBottom: 20 }}>
-        This album is not in our database and could not be found on iTunes.
-        The link may be outdated.
-      </p>
-      <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-        <a href="/albums" style={{
-          background: 'var(--pink)', color: 'white',
-          padding: '10px 24px', borderRadius: 10, fontWeight: 700,
-          fontSize: 14, textDecoration: 'none',
-        }}>
-          Search for an Album
-        </a>
-        <a href="/leaderboards" style={{
-          border: '1px solid var(--border)', color: 'var(--black)',
-          padding: '10px 24px', borderRadius: 10, fontWeight: 600,
-          fontSize: 14, textDecoration: 'none',
-        }}>
-          Back to Leaderboard
-        </a>
-      </div>
-    </main>
+  if (!loaded) return (
+    <div style={{ padding: 60, textAlign: 'center', color: 'var(--gray-text)' }}>
+      <div style={{ fontSize: 32, marginBottom: 16 }}>♪</div>
+      Loading album...
+    </div>
   )
 
-  const displayRatio = Math.max(5, album.banger_ratio || 0)
-  const badge = getBadge(album.banger_ratio || 0)
+  if (error || !album) return (
+    <div style={{ padding: 60, textAlign: 'center', color: 'var(--gray-text)' }}>
+      <div style={{ fontSize: 32, marginBottom: 16 }}>😕</div>
+      <p style={{ marginBottom: 16 }}>Could not load this album.</p>
+      <button onClick={loadAlbum} style={{
+        padding: '10px 24px', borderRadius: 10, background: 'var(--pink)',
+        color: 'white', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
+      }}>Try again</button>
+    </div>
+  )
+
+  const rated   = Object.keys(myRatings).length
+  const total   = tracks.length
+  const skips   = Object.keys(skipped).length
+  const remaining = total - rated - skips
+  const progress  = total > 0 ? Math.round((rated + skips) / total * 100) : 0
+  const badge     = getBadge(album.banger_ratio || 0)
+  const artUrl    = album.artwork_url?.replace('100x100bb','600x600bb').replace('600x600','600x600') || null
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 24px 80px' }}>
+    <div style={{ maxWidth: 800, margin: '0 auto', padding: '32px 20px 100px' }}>
 
-      <div style={{ display: 'flex', gap: 20, marginBottom: 32, alignItems: 'flex-start' }}>
-        <img
-          src={album.artwork_url?.replace('600x600bb', '300x300bb') || album.artwork_url?.replace('600x600', '300x300')}
-          alt={album.name}
-          style={{ width: 120, height: 120, borderRadius: 12, objectFit: 'cover', flexShrink: 0 }}
-        />
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>{album.name}</h1>
-          <p style={{ color: 'var(--gray-text)', marginBottom: 12 }}>{album.artist_name}</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 32, fontWeight: 900, color: 'var(--pink)' }}>
-              {displayRatio}%
-            </span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--pink)',
-              background: 'rgba(255,0,102,0.08)', padding: '4px 10px', borderRadius: 8 }}>
-              {badge.label}
-            </span>
+      {/* Album header */}
+      <div style={{ display: 'flex', gap: 24, marginBottom: 32, flexWrap: 'wrap' }}>
+        {/* Artwork */}
+        <div style={{
+          width: 180, height: 180, borderRadius: 16, overflow: 'hidden',
+          background: 'var(--bg-soft)', flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+        }}>
+          {artUrl
+            ? <img src={artUrl} alt={album.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <span style={{ fontSize: 48, color: 'var(--gray-text)' }}>♪</span>}
+        </div>
+
+        {/* Info */}
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 13, color: 'var(--gray-text)', marginBottom: 4 }}>
+            {album.genre}{album.release_date ? ' · ' + album.release_date.slice(0,4) : ''}
           </div>
-          <p style={{ fontSize: 12, color: 'var(--gray-text)', marginTop: 6 }}>
-            {album.total_ratings || 0} ratings
-          </p>
-          <button
-            onClick={handleShare}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '8px 18px', borderRadius: 20,
-              border: '1px solid var(--gray-200)', background: 'white',
-              fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              color: 'var(--black)', marginTop: 12,
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-100)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'white'}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <circle cx="18" cy="5" r="3"/>
-              <circle cx="6" cy="12" r="3"/>
-              <circle cx="18" cy="19" r="3"/>
-              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
-              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          <h1 style={{ fontSize: 'clamp(1.4rem, 4vw, 2rem)', fontWeight: 700, marginBottom: 6, lineHeight: 1.2 }}>
+            {album.name}
+          </h1>
+          <div style={{ fontSize: 16, color: 'var(--gray-text)', marginBottom: 20 }}>{album.artist_name}</div>
+
+          {/* Banger ratio card */}
+          <div style={{
+            background: 'white', border: '1px solid var(--border)',
+            borderRadius: 14, padding: '16px 20px', display: 'inline-block',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 36, fontWeight: 700, color: 'var(--pink)', lineHeight: 1 }}>
+                {album.banger_ratio != null ? album.banger_ratio + '%' : '—'}
+              </span>
+              <span style={{ fontSize: 14, color: 'var(--gray-text)' }}>Banger Ratio</span>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--gray-text)', marginBottom: 8 }}>
+              {tracks.filter(t => t.is_banger).length} bangers / {tracks.length} tracks
+              {album.total_ratings > 0 ? ' · ' + album.total_ratings + ' ratings' : ''}
+            </div>
+            <div style={{
+              display: 'inline-block', padding: '4px 12px', borderRadius: 20,
+              background: badge.color + '18', fontSize: 12, fontWeight: 600, color: badge.color,
+            }}>{badge.label}</div>
+          </div>
+
+          {/* Share button */}
+          <button onClick={() => {
+            const text = album.name + ' by ' + album.artist_name + ' — ' + album.banger_ratio + '% Banger Ratio on Banger Ratios'
+            if (navigator.share) navigator.share({ title: album.name, text, url: window.location.href })
+            else navigator.clipboard?.writeText(window.location.href)
+          }} style={{
+            display: 'flex', alignItems: 'center', gap: 6, marginTop: 12,
+            padding: '8px 18px', borderRadius: 10, border: '1.5px solid var(--border)',
+            background: 'white', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500,
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
             </svg>
             Share
           </button>
         </div>
       </div>
 
+      {/* Progress bar */}
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--gray-text)', marginBottom: 8 }}>
+          <span>{rated} rated · {skips} skipped · {remaining} remaining</span>
+          <span style={{ fontWeight: 600, color: progress === 100 ? '#00B84D' : 'var(--gray-text)' }}>{progress}%</span>
+        </div>
+        <div style={{ height: 6, background: 'var(--bg-soft)', borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: progress + '%', background: progress === 100 ? '#00B84D' : 'var(--pink)', borderRadius: 3, transition: 'width 0.3s ease' }} />
+        </div>
+      </div>
+
+      {/* Sign in prompt */}
+      {!user && (
+        <div style={{
+          background: 'rgba(255,0,102,0.05)', border: '1px solid rgba(255,0,102,0.15)',
+          borderRadius: 12, padding: '14px 18px', marginBottom: 24,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 14, color: 'var(--gray-text)' }}>Sign in to save your ratings and contribute to the community score.</span>
+          <a href="/auth" style={{ padding: '8px 20px', borderRadius: 8, background: 'var(--pink)', color: 'white', fontSize: 13, fontWeight: 600 }}>Sign In</a>
+        </div>
+      )}
+
+      {/* Scale legend */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20, justifyContent: 'flex-end' }}>
+        {Object.entries(SCALE).map(([n, label]) => (
+          <span key={n} style={{ fontSize: 11, color: parseInt(n) >= 5 ? 'var(--pink)' : 'var(--gray-text)' }}>
+            {n}={label}
+          </span>
+        ))}
+      </div>
+
+      {/* Track list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {tracks.map(track => {
-          const userScore = userRatings[track.id]
+        {tracks.map((track) => {
+          const myScore = myRatings[track.id]
+          const isSkipped = skipped[track.id]
+          const isBanger = track.is_banger
           return (
-            <div key={track.id} style={{ background: 'white', borderRadius: 12,
-              border: '1px solid var(--border)', padding: '14px 16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                <div>
-                  <p style={{ fontWeight: 600, fontSize: 14 }}>
-                    {track.track_number}. {track.name}
-                  </p>
-                  {track.avg_score > 0 && (
-                    <p style={{ fontSize: 12, color: 'var(--gray-text)', marginTop: 2 }}>
-                      Community avg: {track.avg_score?.toFixed(1)}
-                    </p>
-                  )}
+            <div key={track.id} style={{
+              background: 'white', border: '1px solid var(--border)', borderRadius: 14,
+              padding: '14px 16px',
+              opacity: isSkipped ? 0.45 : 1,
+              transition: 'opacity 0.2s',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                {/* Track number */}
+                <span style={{ fontSize: 13, color: 'var(--gray-text)', width: 20, flexShrink: 0, paddingTop: 2, textAlign: 'right' }}>
+                  {track.track_number}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Track name row */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>{track.name}</span>
+                    {isBanger && <span style={{ fontSize: 14 }}>🔥</span>}
+                    {track.duration_ms && <span style={{ fontSize: 12, color: 'var(--gray-text)' }}>{msToMin(track.duration_ms)}</span>}
+                    {track.avg_rating > 0 && (
+                      <span style={{ fontSize: 12, color: 'var(--gray-text)' }}>
+                        Avg: {parseFloat(track.avg_rating).toFixed(1)}/7
+                        {track.total_ratings > 0 ? ' · ' + track.total_ratings + ' ratings' : ''}
+                      </span>
+                    )}
+                  </div>
+                  {/* Rating buttons */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {[1,2,3,4,5,6,7].map(n => (
+                      <button key={n} onClick={() => rateTrack(track.id, n)} style={{
+                        width: 38, height: 38, borderRadius: 10, border: 'none',
+                        background: myScore === n ? 'var(--pink)' : (n >= 5 ? 'rgba(255,0,102,0.07)' : 'var(--bg-soft)'),
+                        color: myScore === n ? 'white' : (n >= 5 ? 'var(--pink)' : 'var(--gray-text)'),
+                        fontWeight: myScore === n ? 700 : 500, fontSize: 14,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                        transition: 'all 0.15s',
+                        transform: myScore === n ? 'scale(1.1)' : 'scale(1)',
+                      }}>{n}</button>
+                    ))}
+                    <button onClick={() => skipTrack(track.id)} style={{
+                      padding: '0 14px', height: 38, borderRadius: 10,
+                      border: '1.5px solid ' + (isSkipped ? 'var(--pink)' : 'var(--border)'),
+                      background: isSkipped ? 'rgba(255,0,102,0.07)' : 'white',
+                      color: isSkipped ? 'var(--pink)' : 'var(--gray-text)',
+                      fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                    }}>{isSkipped ? 'Unskip' : 'Skip'}</button>
+                  </div>
                 </div>
-                {userScore && (
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--pink)',
-                    background: 'rgba(255,0,102,0.08)', padding: '3px 10px', borderRadius: 20 }}>
-                    {SCORE_LABELS[userScore]} ({userScore})
-                  </span>
-                )}
-              </div>
-
-              {!userScore && (
-                <p style={{ fontSize: 11, color: 'var(--gray-text)', textAlign: 'center',
-                  marginBottom: 8, fontStyle: 'italic' }}>
-                  Rate honestly. 1-4 means it did not hit the banger threshold - that data matters just as much.
-                </p>
-              )}
-
-              <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                {[1, 2, 3, 4, 5, 6, 7].map(score => (
-                  <button
-                    key={score}
-                    onClick={() => rateTrack(track.id, score)}
-                    disabled={saving[track.id]}
-                    style={{
-                      width: 38, height: 38, borderRadius: 8, border: 'none',
-                      background: userScore === score
-                        ? 'var(--pink)'
-                        : score >= 5
-                          ? 'rgba(255,0,102,0.08)'
-                          : '#F1F5F9',
-                      color: userScore === score
-                        ? 'white'
-                        : score >= 5
-                          ? 'var(--pink)'
-                          : '#64748B',
-                      fontWeight: 700, fontSize: 14, cursor: 'pointer',
-                      fontFamily: 'inherit',
-                      transition: 'all 0.1s',
-                    }}
-                    title={SCORE_LABELS[score]}
-                  >
-                    {score}
-                  </button>
-                ))}
               </div>
             </div>
           )
         })}
       </div>
 
-      {user && (
-        <button style={{
-          padding: '10px 20px', borderRadius: 10, marginTop: 16,
-          border: '1px solid var(--border)', background: 'white',
-          color: 'var(--gray-text)', fontWeight: 600, fontSize: 13,
-          cursor: 'pointer', width: '100%', fontFamily: 'inherit'
-        }}
-          onClick={() => alert('Lists feature coming soon!')}
-        >
-          + Save to List
-        </button>
+      {/* Saved toast */}
+      {saved && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: '#111', color: 'white', padding: '12px 24px', borderRadius: 12,
+          fontSize: 14, fontWeight: 500, zIndex: 999,
+          animation: 'fadeIn 0.3s ease',
+        }}>
+          Ratings saved ✓
+        </div>
       )}
     </div>
   )
