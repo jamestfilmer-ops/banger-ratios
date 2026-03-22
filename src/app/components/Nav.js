@@ -9,6 +9,8 @@ const tabs = [
   { href: '/leaderboards', label: 'Leaderboards' },
   { href: '/releases',     label: 'New Releases' },
   { href: '/albums',       label: 'Rate Albums' },
+  { href: '/artists',      label: 'Artists' },
+  { href: '/feed',         label: 'Feed' },
   { href: '/friends',      label: 'Friends' },
   { href: '/about',        label: 'About' },
 ]
@@ -61,14 +63,15 @@ export default function Nav() {
             </span>
           </a>
 
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }} className="desktop-nav">
+          <div style={{ display: 'flex', gap: 2, alignItems: 'center' }} className="desktop-nav">
             {tabs.map(t => (
               <a key={t.href} href={t.href} style={{
-                padding: '6px 14px', borderRadius: 8, fontSize: 13,
+                padding: '6px 11px', borderRadius: 8, fontSize: 12,
                 fontWeight: isActive(t.href) ? 600 : 400,
                 color: isActive(t.href) ? 'var(--pink)' : 'var(--gray-600)',
                 background: isActive(t.href) ? 'rgba(255,0,102,0.07)' : 'transparent',
                 transition: 'all 0.15s',
+                whiteSpace: 'nowrap',
               }}>{t.label}</a>
             ))}
           </div>
