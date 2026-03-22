@@ -30,7 +30,6 @@ export default function FeedPage() {
   }, [])
  
   async function loadFeed(userId) {
-    // Get the IDs of users this person follows
     const { data: follows } = await supabase.from('follows')
       .select('following_id').eq('follower_id', userId)
     const followingIds = (follows || []).map(f => f.following_id)
@@ -39,12 +38,11 @@ export default function FeedPage() {
       setActivities([]); setLoading(false); return
     }
  
-    // Get recent ratings from followed users, joined with album + track + profile
     const { data: ratings } = await supabase.from('ratings')
       .select(`
         id, score, created_at,
         tracks ( name, track_number ),
-        albums ( id, name, artist_name, artwork_url ),
+        albums ( id, name, artist_name, artwork_url, itunes_collection_id ),
         profiles ( username, display_name, avatar_url )
       `)
       .in("user_id", followingIds)
@@ -100,6 +98,8 @@ export default function FeedPage() {
           const track    = act.tracks
           const profile  = act.profiles
           if (!album || !track || !profile) return null
+          // Use itunes_collection_id for the route — that's what the album page expects
+          const albumHref = `/album/${album.itunes_collection_id}`
           return (
             <div key={act.id} style={{
               display:'flex', gap:12, background:'white',
@@ -132,7 +132,7 @@ export default function FeedPage() {
  
                 <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
                   {/* Album art */}
-                  <a href={`/album/${album.id}`} style={{ flexShrink:0 }}>
+                  <a href={albumHref} style={{ flexShrink:0 }}>
                     {album.artwork_url
                       ? <img src={album.artwork_url} alt=""
                           style={{ width:44, height:44, borderRadius:6, objectFit:'cover' }} />
@@ -140,7 +140,7 @@ export default function FeedPage() {
                     }
                   </a>
                   <div style={{ minWidth:0 }}>
-                    <a href={`/album/${album.id}`}>
+                    <a href={albumHref}>
                       <p style={{ fontSize:12, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                         {album.name}
                       </p>
